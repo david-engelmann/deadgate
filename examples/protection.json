@@ -1,0 +1,1 @@
+{"enforce_admins":{"enabled":true},"required_status_checks":{"checks":[{"app_id":15368,"context":"ci / build"},{"app_id":15368,"context":"ci / lint"},{"app_id":15368,"context":"ci / package"},{"app_id":15368,"context":"tests / test"}],"contexts":["ci / build","ci / lint","ci / package","tests / test"],"strict":true}}

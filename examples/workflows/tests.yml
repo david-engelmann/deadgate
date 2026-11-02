@@ -1,0 +1,13 @@
+name: tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["src/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pytest

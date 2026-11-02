@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deadgate"
+version = "0.1.0"
+description = "Reconcile required status checks against what CI actually ran."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["PyYAML>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+deadgate = "deadgate.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["deadgate*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
