@@ -1,0 +1,68 @@
+{
+  "format": "deadgate-report/1",
+  "branch": "main",
+  "window": {
+    "first": "2026-09-20",
+    "last": "2026-10-15"
+  },
+  "checks": [
+    {
+      "context": "ci / build",
+      "status": "alive",
+      "producers": [
+        {
+          "workflow": "ci",
+          "file": "ci.yml",
+          "job": "build",
+          "job_name": "build"
+        }
+      ],
+      "last_run_date": "2026-10-15",
+      "notes": []
+    },
+    {
+      "context": "ci / lint",
+      "status": "skipped_only",
+      "producers": [
+        {
+          "workflow": "ci",
+          "file": "ci.yml",
+          "job": "lint",
+          "job_name": "lint"
+        }
+      ],
+      "last_run_date": null,
+      "notes": [
+        "job carries an if condition"
+      ]
+    },
+    {
+      "context": "ci / package",
+      "status": "no_producer",
+      "producers": [],
+      "last_run_date": "2026-09-20",
+      "notes": []
+    },
+    {
+      "context": "tests / test",
+      "status": "never_run",
+      "producers": [
+        {
+          "workflow": "tests",
+          "file": "tests.yml",
+          "job": "test",
+          "job_name": "test"
+        }
+      ],
+      "last_run_date": null,
+      "notes": [
+        "path filtered trigger"
+      ]
+    }
+  ],
+  "summary": {
+    "required": 4,
+    "alive": 1,
+    "paper": 3
+  }
+}
