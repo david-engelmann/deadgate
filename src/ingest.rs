@@ -1,0 +1,481 @@
+//! Ingestion of the three local inputs, mirroring the Python
+//! ingestion module obligation by obligation, the duplicate key
+//! refusal of R2-1 standing at the two JSON doors.
+
+use std::path::Path;
+
+use crate::dates::{date_text_of_instant, parse_timestamp_micros};
+use crate::errors::DeadgateError;
+use crate::jsonvalue::{parse_json_refusing, refusal_message, JsonValue};
+use crate::yaml::{parse_yaml, python_str};
+use crate::yamlvalue::{key_to_value, YamlKey, YamlValue};
+
+/// One workflow job, as the reconciliation reads it.
+#[derive(Debug, Clone)]
+pub struct JobInfo {
+    pub job: String,
+    pub job_name: String,
+    pub has_if: bool,
+    pub combinations: Option<Vec<String>>,
+}
+
+/// One workflow definition.
+#[derive(Debug, Clone)]
+pub struct Workflow {
+    pub workflow: String,
+    pub file: String,
+    pub triggers: YamlValue,
+    /// The jobs keyed by the string form of their identifiers,
+    /// in file order.
+    pub jobs: Vec<(String, JobInfo)>,
+}
+
+/// One execution history record. The workflow name, the status,
+/// and the conclusion stand as the values the export carries.
+#[derive(Debug, Clone)]
+pub struct Record {
+    pub name: String,
+    pub workflow_name: JsonValue,
+    pub status: JsonValue,
+    pub conclusion: JsonValue,
+    pub started_at: Option<i128>,
+    pub completed_at: Option<i128>,
+}
+
+fn read_json_document(path: &str, label: &str) -> Result<JsonValue, DeadgateError> {
+    let bytes = std::fs::read(path)
+        .map_err(|_| DeadgateError::new(format!("{label} cannot be read at {path}")))?;
+    let text = String::from_utf8(bytes)
+        .map_err(|_| DeadgateError::new(format!("{label} at {path} is not valid JSON")))?;
+    parse_json_refusing(&text, label, path)
+        .map_err(|failure| DeadgateError::new(refusal_message(&failure, label, path)))
+}
+
+/// The required status check contexts of one branch, in file
+/// order, deduplicated at their first standing.
+pub fn load_protection(path: &str) -> Result<Vec<String>, DeadgateError> {
+    let data = read_json_document(path, "protection export")?;
+    let required = data
+        .get("required_status_checks")
+        .filter(|value| value.is_object());
+    let required = match required {
+        Some(value) => value.clone(),
+        None => {
+            return Err(DeadgateError::new(format!(
+                "protection export at {path} carries no required status checks"
+            )))
+        }
+    };
+    let checks = required.get("checks").cloned();
+    if let Some(checks_value) = &checks {
+        if !matches!(checks_value, JsonValue::Null) && checks_value.as_list().is_none() {
+            return Err(DeadgateError::new(format!(
+                "protection export at {path} carries a checks value that is not a list"
+            )));
+        }
+    }
+    let context_error = || {
+        DeadgateError::new(format!(
+            "protection export at {path} carries a context that is not a non empty string"
+        ))
+    };
+    let mut contexts: Vec<String> = Vec::new();
+    match &checks {
+        Some(JsonValue::List(entries)) if !entries.is_empty() => {
+            for entry in entries {
+                let context = entry.get("context");
+                match context {
+                    Some(JsonValue::Text(text)) if !text.is_empty() => contexts.push(text.clone()),
+                    _ => return Err(context_error()),
+                }
+            }
+        }
+        _ => {
+            if let Some(JsonValue::List(legacy)) = required.get("contexts") {
+                for context in legacy {
+                    match context {
+                        JsonValue::Text(text) if !text.is_empty() => contexts.push(text.clone()),
+                        _ => return Err(context_error()),
+                    }
+                }
+            }
+        }
+    }
+    if contexts.is_empty() {
+        return Err(DeadgateError::new(format!(
+            "protection export at {path} carries no required status checks"
+        )));
+    }
+    let mut seen: Vec<String> = Vec::new();
+    for context in contexts {
+        if !seen.contains(&context) {
+            seen.push(context);
+        }
+    }
+    Ok(seen)
+}
+
+fn trigger_block(data: &YamlValue) -> YamlValue {
+    // The YAML parser hands the unquoted on key back as the
+    // boolean true, and the string form is asked for first.
+    if let Some(value) = data.get_text("on") {
+        return value.clone();
+    }
+    data.get_key(&YamlKey::Bool(true))
+        .cloned()
+        .unwrap_or(YamlValue::Null)
+}
+
+/// A matrix value in its plain scalar form, for comparing and
+/// rendering, the boolean and null spellings standing lowercase.
+fn scalar_text(value: &YamlValue) -> String {
+    match value {
+        YamlValue::Bool(flag) => {
+            if *flag {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        }
+        YamlValue::Null => "null".to_string(),
+        _ => python_str(value),
+    }
+}
+
+type Combination = Vec<(YamlKey, YamlValue)>;
+
+fn combination_get<'a>(combination: &'a Combination, key: &YamlKey) -> Option<&'a YamlValue> {
+    combination
+        .iter()
+        .find(|(standing, _)| standing == key)
+        .map(|(_, value)| value)
+}
+
+fn combination_update(combination: &mut Combination, entry: &Combination) {
+    for (key, value) in entry {
+        match combination.iter_mut().find(|(standing, _)| standing == key) {
+            Some((_, standing)) => *standing = value.clone(),
+            None => combination.push((key.clone(), value.clone())),
+        }
+    }
+}
+
+fn combination_render(combination: &Combination, axes: &[YamlKey]) -> String {
+    let mut ordered: Vec<&YamlKey> = Vec::new();
+    for axis in axes {
+        if combination_get(combination, axis).is_some() {
+            ordered.push(axis);
+        }
+    }
+    for (key, _) in combination {
+        if !axes.contains(key) {
+            ordered.push(key);
+        }
+    }
+    ordered
+        .iter()
+        .map(|key| scalar_text(combination_get(combination, key).expect("key stands")))
+        .collect::<Vec<String>>()
+        .join(", ")
+}
+
+/// The combination strings the job strategy matrix generates,
+/// or None when the job carries no matrix.
+fn matrix_combinations(spec: &YamlValue) -> Option<Vec<String>> {
+    let strategy = spec.get_text("strategy")?;
+    strategy.as_mapping()?;
+    let matrix = strategy.get_text("matrix")?;
+    let matrix_pairs = matrix.as_mapping()?;
+    let axes: Vec<YamlKey> = matrix_pairs
+        .iter()
+        .map(|(key, _)| key.clone())
+        .filter(|key| {
+            *key != YamlKey::Text("include".to_string())
+                && *key != YamlKey::Text("exclude".to_string())
+        })
+        .collect();
+    let dict_entries = |key: &str| -> Vec<Combination> {
+        match matrix.get_text(key) {
+            Some(YamlValue::List(items)) => items
+                .iter()
+                .filter_map(|item| item.as_mapping().cloned())
+                .collect(),
+            _ => Vec::new(),
+        }
+    };
+    let includes = dict_entries("include");
+    let excludes = dict_entries("exclude");
+    let mut combinations: Vec<Combination>;
+    if axes.is_empty() {
+        combinations = includes.clone();
+    } else {
+        let mut originals: Vec<Combination> = vec![Vec::new()];
+        for axis in &axes {
+            let axis_value = matrix.get_key(axis).cloned().unwrap_or(YamlValue::Null);
+            let pool: Vec<YamlValue> = match &axis_value {
+                YamlValue::List(items) => items.clone(),
+                other => vec![other.clone()],
+            };
+            let mut next: Vec<Combination> = Vec::new();
+            for prefix in &originals {
+                for value in &pool {
+                    let mut grown = prefix.clone();
+                    grown.push((axis.clone(), value.clone()));
+                    next.push(grown);
+                }
+            }
+            originals = next;
+        }
+        combinations = originals.clone();
+        for entry in &includes {
+            let mut merged = false;
+            for (position, original) in originals.iter().enumerate() {
+                let overwrites =
+                    entry
+                        .iter()
+                        .any(|(key, value)| match combination_get(original, key) {
+                            Some(standing) => scalar_text(standing) != scalar_text(value),
+                            None => false,
+                        });
+                if !overwrites {
+                    combination_update(&mut combinations[position], entry);
+                    merged = true;
+                }
+            }
+            if !merged {
+                combinations.push(entry.clone());
+            }
+        }
+    }
+    let mut kept = Vec::new();
+    for combination in &combinations {
+        let excluded = excludes.iter().any(|entry| {
+            entry
+                .iter()
+                .all(|(key, value)| match combination_get(combination, key) {
+                    Some(standing) => scalar_text(standing) == scalar_text(value),
+                    None => false,
+                })
+        });
+        if !excluded {
+            kept.push(combination_render(combination, &axes));
+        }
+    }
+    Some(kept)
+}
+
+/// The suffix of a file name as the Python path reading takes
+/// it, the part from its last dot where that dot does not open
+/// the name.
+fn python_suffix(name: &str) -> &str {
+    match name.rfind('.') {
+        Some(index) if index > 0 => &name[index..],
+        _ => "",
+    }
+}
+
+/// The stem of a file name as the Python path reading takes it,
+/// the name with its suffix cut.
+fn python_stem(name: &str) -> &str {
+    let suffix = python_suffix(name);
+    if suffix.is_empty() {
+        name
+    } else {
+        &name[..name.len() - suffix.len()]
+    }
+}
+
+/// Every workflow definition in a folder, in filename order.
+pub fn load_workflows(folder: &str) -> Result<Vec<Workflow>, DeadgateError> {
+    let folder_path = Path::new(folder);
+    if !folder_path.is_dir() {
+        return Err(DeadgateError::new(format!(
+            "workflows folder cannot be read at {folder}"
+        )));
+    }
+    let mut paths: Vec<(String, String)> = Vec::new();
+    let entries = std::fs::read_dir(folder_path)
+        .map_err(|_| DeadgateError::new(format!("workflows folder cannot be read at {folder}")))?;
+    for entry in entries {
+        let entry = entry.map_err(|_| {
+            DeadgateError::new(format!("workflows folder cannot be read at {folder}"))
+        })?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let suffix = python_suffix(&name);
+        if suffix != ".yml" && suffix != ".yaml" {
+            continue;
+        }
+        let full = entry.path();
+        let is_file = std::fs::metadata(&full)
+            .map(|meta| meta.is_file())
+            .unwrap_or(false);
+        if is_file {
+            paths.push((full.to_string_lossy().into_owned(), name));
+        }
+    }
+    paths.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut workflows = Vec::new();
+    for (full, name) in &paths {
+        let bytes = std::fs::read(full)
+            .map_err(|_| DeadgateError::new(format!("workflow file cannot be read at {full}")))?;
+        let text = String::from_utf8(bytes)
+            .map_err(|_| DeadgateError::new(format!("workflow file at {full} does not parse")))?;
+        let data = parse_yaml(&text)
+            .ok_or_else(|| DeadgateError::new(format!("workflow file at {full} does not parse")))?;
+        if !data.is_mapping() {
+            return Err(DeadgateError::new(format!(
+                "workflow file at {full} is not a mapping"
+            )));
+        }
+        let jobs = data.get_text("jobs");
+        let jobs_pairs = match jobs {
+            Some(value) => match value.as_mapping() {
+                Some(pairs) if !pairs.is_empty() => pairs.clone(),
+                _ => {
+                    return Err(DeadgateError::new(format!(
+                        "workflow file at {full} carries no jobs"
+                    )))
+                }
+            },
+            None => {
+                return Err(DeadgateError::new(format!(
+                    "workflow file at {full} carries no jobs"
+                )))
+            }
+        };
+        let workflow_name = match data.get_text("name") {
+            Some(YamlValue::Text(text)) if !text.is_empty() => text.clone(),
+            _ => python_stem(name).to_string(),
+        };
+        let mut job_map: Vec<(String, JobInfo)> = Vec::new();
+        for (job_key, spec) in &jobs_pairs {
+            let job_id_text = python_str(&key_to_value(job_key));
+            let spec_map = if spec.is_mapping() {
+                spec.clone()
+            } else {
+                YamlValue::Mapping(Vec::new())
+            };
+            let display = match spec_map.get_text("name") {
+                Some(YamlValue::Text(text)) if !text.is_empty() => text.clone(),
+                _ => job_id_text.clone(),
+            };
+            let has_if =
+                matches!(spec_map.get_text("if"), Some(YamlValue::Text(text)) if !text.is_empty());
+            let info = JobInfo {
+                job: job_id_text.clone(),
+                job_name: display,
+                has_if,
+                combinations: matrix_combinations(&spec_map),
+            };
+            match job_map
+                .iter_mut()
+                .find(|(standing, _)| *standing == job_id_text)
+            {
+                Some((_, standing)) => *standing = info,
+                None => job_map.push((job_id_text, info)),
+            }
+        }
+        workflows.push(Workflow {
+            workflow: workflow_name,
+            file: name.clone(),
+            triggers: trigger_block(&data),
+            jobs: job_map,
+        });
+    }
+    Ok(workflows)
+}
+
+/// Read one timestamp field of a history record, a missing or
+/// null field reading as no timestamp and any other value that
+/// does not read standing as the refusal the caller names.
+pub fn parse_timestamp_field(value: Option<&JsonValue>) -> Result<Option<i128>, DeadgateError> {
+    match value {
+        None | Some(JsonValue::Null) => Ok(None),
+        Some(JsonValue::Text(text)) => match parse_timestamp_micros(text) {
+            Some(instant) => Ok(Some(instant)),
+            None => Err(DeadgateError::new("timestamp does not parse".to_string())),
+        },
+        Some(_) => Err(DeadgateError::new("timestamp is not a string".to_string())),
+    }
+}
+
+/// The job records of an execution history export, in file order.
+pub fn load_history(path: &str) -> Result<Vec<Record>, DeadgateError> {
+    let data = read_json_document(path, "history export")?;
+    let jobs = match data.get("jobs") {
+        Some(JsonValue::List(items)) => items.clone(),
+        _ => {
+            return Err(DeadgateError::new(format!(
+                "history export at {path} carries no jobs list"
+            )))
+        }
+    };
+    let mut records = Vec::new();
+    for (position, entry) in jobs.iter().enumerate() {
+        if !entry.is_object() {
+            return Err(DeadgateError::new(format!(
+                "history record {position} is not a mapping"
+            )));
+        }
+        let name = match entry.get("name") {
+            Some(JsonValue::Text(text)) if !text.is_empty() => text.clone(),
+            _ => {
+                return Err(DeadgateError::new(format!(
+                    "history record {position} carries a name that is not a non empty string"
+                )))
+            }
+        };
+        let started = parse_timestamp_field(entry.get("started_at")).map_err(|_| {
+            DeadgateError::new(format!(
+                "history record {position} carries a timestamp that does not parse"
+            ))
+        })?;
+        let completed = parse_timestamp_field(entry.get("completed_at")).map_err(|_| {
+            DeadgateError::new(format!(
+                "history record {position} carries a timestamp that does not parse"
+            ))
+        })?;
+        let status = entry.get("status").cloned().unwrap_or(JsonValue::Null);
+        if status.is_text("completed") && started.is_none() && completed.is_none() {
+            return Err(DeadgateError::new(format!(
+                "history record {position} is completed and carries neither a start nor a completion timestamp"
+            )));
+        }
+        records.push(Record {
+            name,
+            workflow_name: entry
+                .get("workflow_name")
+                .cloned()
+                .unwrap_or(JsonValue::Null),
+            status,
+            conclusion: entry.get("conclusion").cloned().unwrap_or(JsonValue::Null),
+            started_at: started,
+            completed_at: completed,
+        });
+    }
+    Ok(records)
+}
+
+/// The first and last dates any record touches, as the window
+/// object the report carries, or None when no record carries a
+/// timestamp.
+pub fn history_window(records: &[Record]) -> Option<JsonValue> {
+    let mut stamps: Vec<i128> = Vec::new();
+    for record in records {
+        if let Some(stamp) = record.started_at {
+            stamps.push(stamp);
+        }
+        if let Some(stamp) = record.completed_at {
+            stamps.push(stamp);
+        }
+    }
+    if stamps.is_empty() {
+        return None;
+    }
+    let first = *stamps.iter().min().expect("stamps");
+    let last = *stamps.iter().max().expect("stamps");
+    Some(JsonValue::object(vec![
+        ("first", JsonValue::text(date_text_of_instant(first))),
+        ("last", JsonValue::text(date_text_of_instant(last))),
+    ]))
+}
