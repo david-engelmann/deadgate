@@ -1,0 +1,14 @@
+[package]
+name = "deadgate"
+version = "0.1.0"
+edition = "2021"
+description = "Reconcile required status checks against what CI actually ran"
+license = "MIT"
+
+[lib]
+name = "deadgate"
+path = "src/lib.rs"
+
+[[bin]]
+name = "deadgate"
+path = "src/main.rs"

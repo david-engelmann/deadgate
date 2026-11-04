@@ -29,7 +29,7 @@ def test_readme_status_section_states_the_facts():
         "pinned formats",
     ):
         assert fact in lowered, fact
-    assert "closed rounds stand at 1 of 100" in lowered
+    assert "closed rounds stand at 2 of 100" in lowered
 
 
 def test_ci_runs_the_local_gate_command():

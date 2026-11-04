@@ -1,5 +1,6 @@
 """Ingestion of the three local inputs, under obligations S2-1, S2-2, and
-S2-5, as amended by the Round 1 review fixes FIX-2, FIX-6, and FIX-7."""
+S2-5, as amended by the Round 1 review fixes FIX-2, FIX-6, and FIX-7 and
+the Round 2 amendment R2-1."""
 
 from __future__ import annotations
 
@@ -15,13 +16,30 @@ class DeadgateError(Exception):
     """A reported error naming the input that caused it."""
 
 
+def _object_without_repeated_keys(pairs, label, path):
+    """Build one JSON object, refusing a key that stands twice, under R2-1."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise DeadgateError(
+                f"{label} at {path} carries the key {key} more than once"
+            )
+        result[key] = value
+    return result
+
+
 def _read_json(path, label):
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError:
         raise DeadgateError(f"{label} cannot be read at {path}") from None
     try:
-        return json.loads(text)
+        return json.loads(
+            text,
+            object_pairs_hook=lambda pairs: _object_without_repeated_keys(
+                pairs, label, path
+            ),
+        )
     except json.JSONDecodeError:
         raise DeadgateError(f"{label} at {path} is not valid JSON") from None
 
