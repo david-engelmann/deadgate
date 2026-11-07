@@ -10,6 +10,8 @@ use std::collections::HashSet;
 use crate::dates::date_text_of_instant;
 use crate::errors::DeadgateError;
 use crate::ingest::{JobInfo, Record, Workflow};
+use crate::jsonvalue::JsonValue;
+use crate::pytext::PyText;
 use crate::yaml::python_str;
 use crate::yamlvalue::{key_to_value, YamlValue};
 
@@ -22,8 +24,8 @@ const BRANCH_EVENTS: [&str; 2] = ["push", "pull_request"];
 /// One producer of a required context, as the report carries it.
 #[derive(Debug, Clone)]
 pub struct Producer {
-    pub workflow: String,
-    pub file: String,
+    pub workflow: PyText,
+    pub file: PyText,
     pub job: String,
     pub job_name: String,
 }
@@ -39,8 +41,8 @@ pub struct CheckEntry {
 }
 
 struct ProducerFlags {
-    workflow: String,
-    file: String,
+    workflow: PyText,
+    file: PyText,
     job: String,
     job_name: String,
     filtered_only: bool,
@@ -186,35 +188,41 @@ fn compile_pattern(pattern: &str) -> Result<Vec<Atom>, DeadgateError> {
     Ok(atoms)
 }
 
-fn atom_matches(kind: &AtomKind, ch: char) -> bool {
+/// Whether one atom takes one point of the name. The name
+/// stands in points, because the branch word off the command
+/// line can carry a point no character stands for, and the
+/// pattern atoms compare against the point itself.
+fn atom_matches(kind: &AtomKind, point: u32) -> bool {
     match kind {
-        AtomKind::Lit(expected) => *expected == ch,
-        AtomKind::Class(ranges) => ranges.iter().any(|(low, high)| *low <= ch && ch <= *high),
-        AtomKind::StarSlash => ch != '/',
+        AtomKind::Lit(expected) => u32::from(*expected) == point,
+        AtomKind::Class(ranges) => ranges
+            .iter()
+            .any(|(low, high)| u32::from(*low) <= point && point <= u32::from(*high)),
+        AtomKind::StarSlash => point != u32::from('/'),
         // The double star translates to the dot of the pattern
         // engine, and the dot never matches a line break, while
         // the single star class is a negated class and does.
-        AtomKind::StarAny => ch != '\n',
+        AtomKind::StarAny => point != u32::from('\n'),
     }
 }
 
-fn star_predicate(kind: &AtomKind, ch: char) -> bool {
+fn star_predicate(kind: &AtomKind, point: u32) -> bool {
     match kind {
-        AtomKind::StarSlash => ch != '/',
-        AtomKind::StarAny => ch != '\n',
+        AtomKind::StarSlash => point != u32::from('/'),
+        AtomKind::StarAny => point != u32::from('\n'),
         _ => true,
     }
 }
 
 fn match_from(
     atoms: &[Atom],
-    chars: &[char],
+    points: &[u32],
     atom_index: usize,
     char_index: usize,
     seen: &mut HashSet<(usize, usize)>,
 ) -> bool {
     if atom_index == atoms.len() {
-        return char_index == chars.len();
+        return char_index == points.len();
     }
     if !seen.insert((atom_index, char_index)) {
         return false;
@@ -222,29 +230,29 @@ fn match_from(
     let atom = &atoms[atom_index];
     match atom.quant {
         Quant::One => {
-            char_index < chars.len()
-                && atom_matches(&atom.kind, chars[char_index])
-                && match_from(atoms, chars, atom_index + 1, char_index + 1, seen)
+            char_index < points.len()
+                && atom_matches(&atom.kind, points[char_index])
+                && match_from(atoms, points, atom_index + 1, char_index + 1, seen)
         }
         Quant::Question => {
-            (char_index < chars.len()
-                && atom_matches(&atom.kind, chars[char_index])
-                && match_from(atoms, chars, atom_index + 1, char_index + 1, seen))
-                || match_from(atoms, chars, atom_index + 1, char_index, seen)
+            (char_index < points.len()
+                && atom_matches(&atom.kind, points[char_index])
+                && match_from(atoms, points, atom_index + 1, char_index + 1, seen))
+                || match_from(atoms, points, atom_index + 1, char_index, seen)
         }
         Quant::Plus => {
-            char_index < chars.len()
-                && atom_matches(&atom.kind, chars[char_index])
-                && (match_from(atoms, chars, atom_index, char_index + 1, seen)
-                    || match_from(atoms, chars, atom_index + 1, char_index + 1, seen))
+            char_index < points.len()
+                && atom_matches(&atom.kind, points[char_index])
+                && (match_from(atoms, points, atom_index, char_index + 1, seen)
+                    || match_from(atoms, points, atom_index + 1, char_index + 1, seen))
         }
         Quant::Star | Quant::StarLazy => {
             let mut end = char_index;
             loop {
-                if match_from(atoms, chars, atom_index + 1, end, seen) {
+                if match_from(atoms, points, atom_index + 1, end, seen) {
                     return true;
                 }
-                if end < chars.len() && star_predicate(&atom.kind, chars[end]) {
+                if end < points.len() && star_predicate(&atom.kind, points[end]) {
                     end += 1;
                 } else {
                     return false;
@@ -253,25 +261,24 @@ fn match_from(
         }
         Quant::StarPossessive => {
             let mut end = char_index;
-            while end < chars.len() && star_predicate(&atom.kind, chars[end]) {
+            while end < points.len() && star_predicate(&atom.kind, points[end]) {
                 end += 1;
             }
-            match_from(atoms, chars, atom_index + 1, end, seen)
+            match_from(atoms, points, atom_index + 1, end, seen)
         }
     }
 }
 
-fn pattern_matches(pattern: &str, name: &str) -> Result<bool, DeadgateError> {
+fn pattern_matches(pattern: &str, name: &[u32]) -> Result<bool, DeadgateError> {
     let atoms = compile_pattern(pattern)?;
-    let chars: Vec<char> = name.chars().collect();
     let mut seen = HashSet::new();
-    Ok(match_from(&atoms, &chars, 0, 0, &mut seen))
+    Ok(match_from(&atoms, name, 0, 0, &mut seen))
 }
 
 /// Whether a pattern list claims a name, its patterns applied
 /// in the order the file writes them so the last matching
 /// pattern decides.
-fn pattern_list_claims(patterns: &[String], name: &str) -> Result<bool, DeadgateError> {
+fn pattern_list_claims(patterns: &[String], name: &[u32]) -> Result<bool, DeadgateError> {
     let mut claimed = false;
     for pattern in patterns {
         if let Some(stripped) = pattern.strip_prefix('!') {
@@ -296,14 +303,14 @@ fn filter_patterns(config: &YamlValue, key: &str) -> Option<Vec<String>> {
     }
 }
 
-fn branch_admitted(config: &YamlValue, branch: &str) -> Result<bool, DeadgateError> {
+fn branch_admitted(config: &YamlValue, branch: &PyText) -> Result<bool, DeadgateError> {
     if let Some(branches) = filter_patterns(config, "branches") {
-        if !pattern_list_claims(&branches, branch)? {
+        if !pattern_list_claims(&branches, branch.points())? {
             return Ok(false);
         }
     }
     if let Some(ignore) = filter_patterns(config, "branches-ignore") {
-        if pattern_list_claims(&ignore, branch)? {
+        if pattern_list_claims(&ignore, branch.points())? {
             return Ok(false);
         }
     }
@@ -346,7 +353,7 @@ fn event_configs(triggers: &YamlValue) -> Vec<(String, YamlValue)> {
 
 /// Whether the workflow can fire for the branch, and whether
 /// it fires for the branch only through path filtered events.
-pub fn workflow_fires(workflow: &Workflow, branch: &str) -> Result<(bool, bool), DeadgateError> {
+pub fn workflow_fires(workflow: &Workflow, branch: &PyText) -> Result<(bool, bool), DeadgateError> {
     let configs = event_configs(&workflow.triggers);
     let mut fires = false;
     let mut unfiltered = false;
@@ -366,16 +373,27 @@ pub fn workflow_fires(workflow: &Workflow, branch: &str) -> Result<(bool, bool),
 }
 
 /// The check names one job produces, as bare and workflow form
-/// pairs, one pair per matrix combination.
-fn job_forms(workflow_name: &str, job: &JobInfo) -> Vec<(String, String)> {
-    let display = &job.job_name;
+/// pairs, one pair per matrix combination. The forms stand in
+/// points because the workflow name they build on can carry a
+/// point off the file name bytes.
+fn job_forms(workflow_name: &PyText, job: &JobInfo) -> Vec<(PyText, PyText)> {
+    let display = PyText::from_plain(&job.job_name);
+    let form = |bare: PyText| {
+        let mut full = workflow_name.clone();
+        full.push_str(" / ");
+        full.push_text(&bare);
+        (bare, full)
+    };
     match &job.combinations {
-        None => vec![(display.clone(), format!("{workflow_name} / {display}"))],
+        None => vec![form(display)],
         Some(combinations) => combinations
             .iter()
             .map(|suffix| {
-                let bare = format!("{display} ({suffix})");
-                (bare.clone(), format!("{workflow_name} / {bare}"))
+                let mut bare = display.clone();
+                bare.push_str(" (");
+                bare.push_str(suffix);
+                bare.push_str(")");
+                form(bare)
             })
             .collect(),
     }
@@ -413,7 +431,7 @@ pub fn reconcile(
     contexts: &[String],
     workflows: &[Workflow],
     records: &[Record],
-    branch: &str,
+    branch: &PyText,
 ) -> Result<Vec<CheckEntry>, DeadgateError> {
     let mut firing: Vec<(&Workflow, bool)> = Vec::new();
     for workflow in workflows {
@@ -425,7 +443,7 @@ pub fn reconcile(
     let mut entries = Vec::new();
     for context in contexts {
         let mut producers: Vec<ProducerFlags> = Vec::new();
-        let mut vouched: Vec<(&str, Vec<String>)> = Vec::new();
+        let mut vouched: Vec<(PyText, Vec<PyText>)> = Vec::new();
         for (workflow, filtered_only) in &firing {
             let mut job_keys: Vec<&String> = workflow.jobs.iter().map(|(key, _)| key).collect();
             job_keys.sort();
@@ -437,7 +455,7 @@ pub fn reconcile(
                     .expect("job")
                     .1;
                 for (bare, full) in job_forms(&workflow.workflow, job) {
-                    if context == &bare || context == &full {
+                    if bare.equals_str(context) || full.equals_str(context) {
                         producers.push(ProducerFlags {
                             workflow: workflow.workflow.clone(),
                             file: workflow.file.clone(),
@@ -446,20 +464,22 @@ pub fn reconcile(
                             filtered_only: *filtered_only,
                             has_if: job.has_if,
                         });
-                        vouched.push((&workflow.workflow, vec![bare, full]));
+                        vouched.push((workflow.workflow.clone(), vec![bare, full]));
                         break;
                     }
                 }
             }
         }
-        producers
-            .sort_by(|a, b| (a.file.clone(), a.job.clone()).cmp(&(b.file.clone(), b.job.clone())));
+        producers.sort_by(|a, b| (&a.file, &a.job).cmp(&(&b.file, &b.job)));
         let matched: Vec<&Record> = records
             .iter()
             .filter(|record| {
                 vouched.iter().any(|(workflow_name, names)| {
-                    record.workflow_name.is_text(workflow_name)
-                        && names.iter().any(|name| name == &record.name)
+                    let workflow_matches = match &record.workflow_name {
+                        JsonValue::Text(text) => workflow_name.equals_str(text),
+                        _ => false,
+                    };
+                    workflow_matches && names.iter().any(|name| name.equals_str(&record.name))
                 })
             })
             .collect();

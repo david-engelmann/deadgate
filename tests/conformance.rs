@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use deadgate::dates::{instant_isoformat, parse_timestamp_micros};
 use deadgate::ingest::{history_window, load_history, load_protection, load_workflows, Workflow};
 use deadgate::jsonvalue::{parse_json, JsonValue};
+use deadgate::pytext::PyText;
 use deadgate::reconcile::workflow_fires;
 use deadgate::report::{build_report, render_json, render_markdown};
 use deadgate::yaml::{parse_yaml, python_float_text, python_repr, python_str};
@@ -124,6 +125,18 @@ fn tag_json(value: &JsonValue) -> JsonValue {
         ]),
         JsonValue::Float(number) => float_tag(*number),
         JsonValue::Text(text) => str_tag(text),
+        JsonValue::PointText(text) => JsonValue::object(vec![
+            ("t", JsonValue::text("strcp")),
+            (
+                "v",
+                JsonValue::List(
+                    text.points()
+                        .iter()
+                        .map(|point| JsonValue::Int(i64::from(*point)))
+                        .collect(),
+                ),
+            ),
+        ]),
         JsonValue::List(items) => JsonValue::object(vec![
             ("t", JsonValue::text("list")),
             ("v", JsonValue::List(items.iter().map(tag_json).collect())),
@@ -275,7 +288,7 @@ fn protection_cases_hold() {
         }
         let path_text = path.to_string_lossy().into_owned();
         let expect = field(case, "expect");
-        match load_protection(&path_text) {
+        match load_protection(&path) {
             Ok(contexts) => {
                 let wanted = field(expect, "ok").as_list().expect("recorded contexts");
                 let wanted: Vec<&str> = wanted.iter().filter_map(|item| item.as_text()).collect();
@@ -298,7 +311,7 @@ fn history_cases_hold() {
         std::fs::write(&path, field_text(case, "text")).expect("write text");
         let path_text = path.to_string_lossy().into_owned();
         let expect = field(case, "expect");
-        match load_history(&path_text) {
+        match load_history(&path) {
             Ok(records) => {
                 let wanted = field(expect, "ok");
                 let tagged: Vec<JsonValue> = records
@@ -402,14 +415,30 @@ fn workflow_cases_hold() {
         let folder = write_workflows(&root, case);
         let folder_text = folder.to_string_lossy().into_owned();
         let expect = field(case, "expect");
-        match load_workflows(&folder_text) {
+        match load_workflows(&folder) {
             Ok(workflows) => {
                 let tagged: Vec<JsonValue> = workflows
                     .iter()
                     .map(|workflow| {
                         JsonValue::object(vec![
-                            ("workflow", JsonValue::text(workflow.workflow.clone())),
-                            ("file", JsonValue::text(workflow.file.clone())),
+                            (
+                                "workflow",
+                                JsonValue::text(
+                                    workflow
+                                        .workflow
+                                        .plain()
+                                        .expect("the recorded workflow name is plain"),
+                                ),
+                            ),
+                            (
+                                "file",
+                                JsonValue::text(
+                                    workflow
+                                        .file
+                                        .plain()
+                                        .expect("the recorded file name is plain"),
+                                ),
+                            ),
                             ("triggers", tag_yaml(&workflow.triggers)),
                             (
                                 "jobs",
@@ -501,11 +530,17 @@ fn report_cases_hold() {
         let history_text = history.to_string_lossy().into_owned();
         let folder_text = folder.to_string_lossy().into_owned();
         let run = (|| -> Result<JsonValue, deadgate::DeadgateError> {
-            let contexts = load_protection(&protection_text)?;
-            let workflows = load_workflows(&folder_text)?;
-            let records = load_history(&history_text)?;
+            let contexts = load_protection(&protection)?;
+            let workflows = load_workflows(&folder)?;
+            let records = load_history(&history)?;
             let window = history_window(&records);
-            build_report(&contexts, &workflows, &records, branch, window)
+            build_report(
+                &contexts,
+                &workflows,
+                &records,
+                &PyText::from_plain(branch),
+                window,
+            )
         })();
         match run {
             Ok(report) => {
@@ -516,7 +551,7 @@ fn report_cases_hold() {
                     "case {name} json"
                 );
                 assert_eq!(
-                    render_markdown(&report),
+                    String::from_utf8(render_markdown(&report)).expect("markdown text"),
                     field_text(wanted, "markdown"),
                     "case {name} markdown"
                 );
@@ -557,8 +592,8 @@ fn pattern_cases_hold() {
             .collect();
         let branch = field_text(case, "branch");
         let workflow = Workflow {
-            workflow: "w".to_string(),
-            file: "w.yml".to_string(),
+            workflow: PyText::from_plain("w"),
+            file: PyText::from_plain("w.yml"),
             triggers: YamlValue::Mapping(vec![(
                 YamlKey::Text("push".to_string()),
                 YamlValue::Mapping(vec![(
@@ -574,7 +609,7 @@ fn pattern_cases_hold() {
             jobs: Vec::new(),
         };
         let expect = field(case, "expect");
-        match workflow_fires(&workflow, branch) {
+        match workflow_fires(&workflow, &PyText::from_plain(branch)) {
             Ok((fires, _)) => {
                 let wanted = field(expect, "fires");
                 assert_eq!(
@@ -693,11 +728,18 @@ fn binary_door_holds() {
         .output()
         .expect("run the binary");
     assert!(output.status.success(), "the binary succeeds");
-    let contexts = load_protection(protection.to_str().expect("path")).expect("contexts");
-    let workflows = load_workflows(folder.to_str().expect("path")).expect("workflows");
-    let records = load_history(history.to_str().expect("path")).expect("records");
+    let contexts = load_protection(&protection).expect("contexts");
+    let workflows = load_workflows(&folder).expect("workflows");
+    let records = load_history(&history).expect("records");
     let window = history_window(&records);
-    let report = build_report(&contexts, &workflows, &records, "main", window).expect("report");
+    let report = build_report(
+        &contexts,
+        &workflows,
+        &records,
+        &PyText::from_plain("main"),
+        window,
+    )
+    .expect("report");
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout text"),
         render_json(&report),

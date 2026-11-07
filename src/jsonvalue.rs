@@ -31,6 +31,13 @@ pub enum JsonValue {
     BigInt(String),
     Float(f64),
     Text(String),
+    /// A text carried in the runtime point form, where a byte
+    /// that did not decode stands as its escape point (see
+    /// crate::pytext). A word off the command line, such as the
+    /// branch word, reaches the report in this form, so the
+    /// spelling of the word on every surface matches the
+    /// runtime spelling of the word it decoded.
+    PointText(crate::pytext::PyText),
     List(Vec<JsonValue>),
     Object(Vec<(String, JsonValue)>),
 }
@@ -156,6 +163,9 @@ impl PartialEq for JsonValue {
         match (self, other) {
             (JsonValue::Null, JsonValue::Null) => true,
             (JsonValue::Text(a), JsonValue::Text(b)) => a == b,
+            (JsonValue::PointText(a), JsonValue::PointText(b)) => a == b,
+            (JsonValue::PointText(a), JsonValue::Text(b)) => a.equals_str(b),
+            (JsonValue::Text(a), JsonValue::PointText(b)) => b.equals_str(a),
             (JsonValue::List(a), JsonValue::List(b)) => {
                 a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x == y)
             }

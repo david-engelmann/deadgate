@@ -937,11 +937,7 @@ fn tab_refused(text: &str) -> bool {
 /// directive stands as it stands and is passed over. A comment
 /// may close the line, and a tab in the directive itself
 /// refuses it.
-fn directive_stands(
-    text: &str,
-    version_seen: &mut bool,
-    tag_handles: &mut Vec<String>,
-) -> bool {
+fn directive_stands(text: &str, version_seen: &mut bool, tag_handles: &mut Vec<String>) -> bool {
     let head = match text.find(" #") {
         Some(index) => &text[..index],
         None => text,
@@ -968,9 +964,8 @@ fn directive_stands(
             let Some((major, minor)) = args[0].split_once('.') else {
                 return false;
             };
-            let digits = |part: &str| {
-                !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit())
-            };
+            let digits =
+                |part: &str| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit());
             if !digits(major) || !digits(minor) {
                 return false;
             }
