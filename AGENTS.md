@@ -57,4 +57,4 @@ Deadgate asks whether it ran. Finaltree asks what it ran on, and blindgate asks 
 
 The three sources of truth are protection settings, workflow definitions, and execution history. All three are ingested as local exports handed to the tool as files. The tool makes no network call at any point, and the tests make none either. Every fixture in this repo is synthetic and written for this repo, and no real protection payload, workflow file, or run history from a working repository ever enters it.
 
-The local gate is python -m pytest and cargo test once the crate exists. The closed round count stands in the README and moves only at a closure, and nowhere else.
+The local gate is cargo test. The closed round count stands in the README and moves only at a closure, and nowhere else.

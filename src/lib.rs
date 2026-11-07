@@ -12,6 +12,7 @@ pub mod errors;
 pub mod ingest;
 pub mod jsonvalue;
 pub mod printable;
+pub mod pytext;
 pub mod reconcile;
 pub mod report;
 pub mod yaml;

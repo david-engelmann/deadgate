@@ -2,11 +2,13 @@
 //! ingestion module obligation by obligation, the duplicate key
 //! refusal of R2-1 standing at the two JSON doors.
 
-use std::path::Path;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 use crate::dates::{date_text_of_instant, parse_timestamp_micros};
 use crate::errors::DeadgateError;
 use crate::jsonvalue::{parse_json_refusing, refusal_message, JsonValue};
+use crate::pytext::{path_text, PyText};
 use crate::yaml::{parse_yaml, python_str};
 use crate::yamlvalue::{key_to_value, YamlKey, YamlValue};
 
@@ -19,11 +21,14 @@ pub struct JobInfo {
     pub combinations: Option<Vec<String>>,
 }
 
-/// One workflow definition.
+/// One workflow definition. The workflow name and the file
+/// name stand in the runtime point form, because a file name
+/// off the disk is a run of bytes the runtime decodes with its
+/// escape standing, and the name fallback is read off it.
 #[derive(Debug, Clone)]
 pub struct Workflow {
-    pub workflow: String,
-    pub file: String,
+    pub workflow: PyText,
+    pub file: PyText,
     pub triggers: YamlValue,
     /// The jobs keyed by the string form of their identifiers,
     /// in file order.
@@ -42,18 +47,20 @@ pub struct Record {
     pub completed_at: Option<i128>,
 }
 
-fn read_json_document(path: &str, label: &str) -> Result<JsonValue, DeadgateError> {
+fn read_json_document(path: &Path, label: &str) -> Result<JsonValue, DeadgateError> {
+    let shown = path_text(path);
     let bytes = std::fs::read(path)
-        .map_err(|_| DeadgateError::new(format!("{label} cannot be read at {path}")))?;
+        .map_err(|_| DeadgateError::new(format!("{label} cannot be read at {shown}")))?;
     let text = String::from_utf8(bytes)
-        .map_err(|_| DeadgateError::new(format!("{label} at {path} is not valid JSON")))?;
-    parse_json_refusing(&text, label, path)
-        .map_err(|failure| DeadgateError::new(refusal_message(&failure, label, path)))
+        .map_err(|_| DeadgateError::new(format!("{label} at {shown} is not valid JSON")))?;
+    parse_json_refusing(&text, label, &shown)
+        .map_err(|failure| DeadgateError::new(refusal_message(&failure, label, &shown)))
 }
 
 /// The required status check contexts of one branch, in file
 /// order, deduplicated at their first standing.
-pub fn load_protection(path: &str) -> Result<Vec<String>, DeadgateError> {
+pub fn load_protection(path: &Path) -> Result<Vec<String>, DeadgateError> {
+    let shown = path_text(path);
     let data = read_json_document(path, "protection export")?;
     let required = data
         .get("required_status_checks")
@@ -62,7 +69,7 @@ pub fn load_protection(path: &str) -> Result<Vec<String>, DeadgateError> {
         Some(value) => value.clone(),
         None => {
             return Err(DeadgateError::new(format!(
-                "protection export at {path} carries no required status checks"
+                "protection export at {shown} carries no required status checks"
             )))
         }
     };
@@ -70,13 +77,13 @@ pub fn load_protection(path: &str) -> Result<Vec<String>, DeadgateError> {
     if let Some(checks_value) = &checks {
         if !matches!(checks_value, JsonValue::Null) && checks_value.as_list().is_none() {
             return Err(DeadgateError::new(format!(
-                "protection export at {path} carries a checks value that is not a list"
+                "protection export at {shown} carries a checks value that is not a list"
             )));
         }
     }
     let context_error = || {
         DeadgateError::new(format!(
-            "protection export at {path} carries a context that is not a non empty string"
+            "protection export at {shown} carries a context that is not a non empty string"
         ))
     };
     let mut contexts: Vec<String> = Vec::new();
@@ -103,7 +110,7 @@ pub fn load_protection(path: &str) -> Result<Vec<String>, DeadgateError> {
     }
     if contexts.is_empty() {
         return Err(DeadgateError::new(format!(
-            "protection export at {path} carries no required status checks"
+            "protection export at {shown} carries no required status checks"
         )));
     }
     let mut seen: Vec<String> = Vec::new();
@@ -266,43 +273,116 @@ fn matrix_combinations(spec: &YamlValue) -> Option<Vec<String>> {
 
 /// The suffix of a file name as the Python path reading takes
 /// it, the part from its last dot where that dot does not open
-/// the name.
-fn python_suffix(name: &str) -> &str {
-    match name.rfind('.') {
+/// the name. The name is a run of bytes off the disk, and the
+/// dot the reading looks for is a byte, so the reading runs on
+/// the bytes.
+fn python_suffix(name: &[u8]) -> &[u8] {
+    match name.iter().rposition(|byte| *byte == b'.') {
         Some(index) if index > 0 => &name[index..],
-        _ => "",
+        _ => &[],
     }
 }
 
-/// The stem of a file name as the Python path reading takes it,
-/// the name with its suffix cut.
-fn python_stem(name: &str) -> &str {
+/// The stem of a file name as the Python path reading takes
+/// it, the name with its suffix cut.
+fn python_stem(name: &[u8]) -> &[u8] {
     let suffix = python_suffix(name);
-    if suffix.is_empty() {
-        name
-    } else {
-        &name[..name.len() - suffix.len()]
+    &name[..name.len() - suffix.len()]
+}
+
+#[cfg(unix)]
+fn os_string_from_bytes(bytes: Vec<u8>) -> OsString {
+    use std::os::unix::ffi::OsStringExt;
+    OsString::from_vec(bytes)
+}
+
+#[cfg(not(unix))]
+fn os_string_from_bytes(bytes: Vec<u8>) -> OsString {
+    OsString::from(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(unix)]
+fn name_bytes(name: &OsString) -> Vec<u8> {
+    use std::os::unix::ffi::OsStrExt;
+    name.as_os_str().as_bytes().to_vec()
+}
+
+#[cfg(not(unix))]
+fn name_bytes(name: &OsString) -> Vec<u8> {
+    name.to_string_lossy().into_owned().into_bytes()
+}
+
+/// The folder word as the runtime path reading normalises it.
+/// Empty segments and dot segments fall away, a leading slash
+/// stands, a doubled leading slash stands as the root, the
+/// parent word stands as a segment, and a word with nothing
+/// left stands as the dot.
+fn normalised_folder(word: &PyText) -> PyText {
+    let slash = u32::from('/');
+    let points = word.points();
+    let mut slashes = 0;
+    while slashes < points.len() && points[slashes] == slash {
+        slashes += 1;
     }
+    let mut out = PyText::new();
+    if slashes == 2 {
+        out.push_str("//");
+    } else if slashes >= 1 {
+        out.push_str("/");
+    }
+    let mut first = true;
+    for segment in points.split(|point| *point == slash) {
+        if segment.is_empty() || segment == [u32::from('.')] {
+            continue;
+        }
+        if !first {
+            out.push_str("/");
+        }
+        first = false;
+        out.push_points(segment);
+    }
+    if out.is_empty() {
+        out.push_str(".");
+    }
+    out
+}
+
+/// The spelling of one member of a folder, the folder word and
+/// the member name joined the way the runtime path reading
+/// joins them.
+fn member_text(folder: &PyText, name: &PyText) -> PyText {
+    let mut out = PyText::new();
+    if folder.equals_str(".") {
+        out.push_text(name);
+        return out;
+    }
+    out.push_text(folder);
+    let points = folder.points();
+    if points.last() != Some(&u32::from('/')) {
+        out.push_str("/");
+    }
+    out.push_text(name);
+    out
 }
 
 /// Every workflow definition in a folder, in filename order.
-pub fn load_workflows(folder: &str) -> Result<Vec<Workflow>, DeadgateError> {
-    let folder_path = Path::new(folder);
+pub fn load_workflows(folder: &Path) -> Result<Vec<Workflow>, DeadgateError> {
+    let normalised = normalised_folder(&PyText::from_os_str(folder.as_os_str()));
+    let folder_shown = normalised.stderr_spelling();
+    let folder_error =
+        || DeadgateError::new(format!("workflows folder cannot be read at {folder_shown}"));
+    let folder_path = PathBuf::from(os_string_from_bytes(normalised.stdout_bytes()));
     if !folder_path.is_dir() {
-        return Err(DeadgateError::new(format!(
-            "workflows folder cannot be read at {folder}"
-        )));
+        return Err(folder_error());
     }
-    let mut paths: Vec<(String, String)> = Vec::new();
-    let entries = std::fs::read_dir(folder_path)
-        .map_err(|_| DeadgateError::new(format!("workflows folder cannot be read at {folder}")))?;
+    let mut members: Vec<(PyText, PathBuf, Vec<u8>)> = Vec::new();
+    let entries = std::fs::read_dir(&folder_path).map_err(|_| folder_error())?;
     for entry in entries {
-        let entry = entry.map_err(|_| {
-            DeadgateError::new(format!("workflows folder cannot be read at {folder}"))
-        })?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let suffix = python_suffix(&name);
-        if suffix != ".yml" && suffix != ".yaml" {
+        let entry = entry.map_err(|_| folder_error())?;
+        let raw_name = entry.file_name();
+        let bytes_of_name = name_bytes(&raw_name);
+        let suffix = python_suffix(&bytes_of_name);
+        if suffix != b".yml" && suffix != b".yaml" {
             continue;
         }
         let full = entry.path();
@@ -310,13 +390,15 @@ pub fn load_workflows(folder: &str) -> Result<Vec<Workflow>, DeadgateError> {
             .map(|meta| meta.is_file())
             .unwrap_or(false);
         if is_file {
-            paths.push((full.to_string_lossy().into_owned(), name));
+            let member = member_text(&normalised, &PyText::from_bytes(&bytes_of_name));
+            members.push((member, full, bytes_of_name));
         }
     }
-    paths.sort_by(|a, b| a.0.cmp(&b.0));
+    members.sort_by(|a, b| a.0.cmp(&b.0));
     let mut workflows = Vec::new();
-    for (full, name) in &paths {
-        let bytes = std::fs::read(full)
+    for (member, full_path, bytes_of_name) in &members {
+        let full = member.stderr_spelling();
+        let bytes = std::fs::read(full_path)
             .map_err(|_| DeadgateError::new(format!("workflow file cannot be read at {full}")))?;
         let text = String::from_utf8(bytes)
             .map_err(|_| DeadgateError::new(format!("workflow file at {full} does not parse")))?;
@@ -344,8 +426,8 @@ pub fn load_workflows(folder: &str) -> Result<Vec<Workflow>, DeadgateError> {
             }
         };
         let workflow_name = match data.get_text("name") {
-            Some(YamlValue::Text(text)) if !text.is_empty() => text.clone(),
-            _ => python_stem(name).to_string(),
+            Some(YamlValue::Text(text)) if !text.is_empty() => PyText::from_plain(text),
+            _ => PyText::from_bytes(python_stem(bytes_of_name)),
         };
         let mut job_map: Vec<(String, JobInfo)> = Vec::new();
         for (job_key, spec) in &jobs_pairs {
@@ -377,7 +459,7 @@ pub fn load_workflows(folder: &str) -> Result<Vec<Workflow>, DeadgateError> {
         }
         workflows.push(Workflow {
             workflow: workflow_name,
-            file: name.clone(),
+            file: PyText::from_bytes(bytes_of_name),
             triggers: trigger_block(&data),
             jobs: job_map,
         });
@@ -400,13 +482,14 @@ pub fn parse_timestamp_field(value: Option<&JsonValue>) -> Result<Option<i128>, 
 }
 
 /// The job records of an execution history export, in file order.
-pub fn load_history(path: &str) -> Result<Vec<Record>, DeadgateError> {
+pub fn load_history(path: &Path) -> Result<Vec<Record>, DeadgateError> {
+    let shown = path_text(path);
     let data = read_json_document(path, "history export")?;
     let jobs = match data.get("jobs") {
         Some(JsonValue::List(items)) => items.clone(),
         _ => {
             return Err(DeadgateError::new(format!(
-                "history export at {path} carries no jobs list"
+                "history export at {shown} carries no jobs list"
             )))
         }
     };
