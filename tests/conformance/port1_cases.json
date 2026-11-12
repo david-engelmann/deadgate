@@ -7336,6 +7336,705 @@
      }
     },
     "port_stated": true
+   },
+   {
+    "name": "block spaces only line alone before a sibling",
+    "text": "a: |\n  \nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line alone under keep",
+    "text": "a: |+\n  \nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line alone under strip",
+    "text": "a: |-\n  \nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line alone folded",
+    "text": "a: >\n  \nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only wide line alone before a sibling",
+    "text": "a: |\n    \nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line alone in a sequence",
+    "text": "- |\n  \n- x\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": ""
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line alone nested",
+    "text": "a:\n  b: |\n    \n  c: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "str",
+            "v": ""
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only lines alone under keep",
+    "text": "a: |+\n  \n \nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto floor does not take a parent line as content",
+    "text": "a:\n  b: |\n \n  c: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "str",
+            "v": ""
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto floor does not take a parent line in a sequence",
+    "text": "- a:\n    b: |\n   \n    c: 1\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "a"
+          },
+          {
+           "t": "obj",
+           "v": [
+            [
+             {
+              "t": "str",
+              "v": "b"
+             },
+             {
+              "t": "str",
+              "v": ""
+             }
+            ],
+            [
+             {
+              "t": "str",
+              "v": "c"
+             },
+             {
+              "t": "int",
+              "v": "1"
+             }
+            ]
+           ]
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run before a more indented line",
+    "text": "a: >\n  one\n\n    ind\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          32,
+          32,
+          105,
+          110,
+          100,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run after a more indented line",
+    "text": "a: >\n  one\n    ind\n\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          32,
+          32,
+          105,
+          110,
+          100,
+          10,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run between more indented lines",
+    "text": "a: >\n  one\n    mid\n\n    ind\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          32,
+          32,
+          109,
+          105,
+          100,
+          10,
+          10,
+          32,
+          32,
+          105,
+          110,
+          100,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run before a tab first line",
+    "text": "a: >\n  one\n\n  \ttwo\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          9,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run of two before a more indented line",
+    "text": "a: >\n  one\n\n\n    ind\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          10,
+          32,
+          32,
+          105,
+          110,
+          100,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line carrying a tab before a sibling",
+    "text": "a: |\n  \t\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          9,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line carrying a tab in a sequence",
+    "text": "- |\n  \t\n- x\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "strcp",
+        "v": [
+         9,
+         10
+        ]
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line carrying a tab wider before a sibling",
+    "text": "a: |\n   \t\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          9,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only line carrying a tab under keep",
+    "text": "a: |+\n  \t\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          9,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block tab inside content under crlf breaks",
+    "text": "a: |\r\n  x\ty\r\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          9,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block tab inside content under cr breaks",
+    "text": "a: |\r  x\ty\r",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          9,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block quote inside content does not shelter a separator tab",
+    "text": "x: |\n  'q\na:\t|\n  y\n",
+    "expect": {
+     "err": "ScannerError"
+    }
    }
   ],
   "yaml_strings": [

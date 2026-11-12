@@ -21,6 +21,16 @@ Nothing else in the recordings moves. The script asserts
 that on every run, so a regeneration that would move a
 standing recording outside the stated movement fails here
 rather than in the suite.
+
+The fix pass of the round adds the FIX_CORPUS cases below,
+appended after the separator cases. They pin the shapes
+the round's reviews found the first corpus missing, the
+spaces only line standing alone and carrying a tab, the
+tab inside block content under the carriage return break
+forms, the separator tab a quote inside block content
+cannot shelter, the auto detection floor at the holding
+indent, and the folded blank run beside a more indented
+line in both directions.
 """
 
 import json
@@ -220,6 +230,46 @@ SEPARATOR_CORPUS = [
 ]
 
 
+# The fix pass corpus, by the families the shapes belong
+# to. Each entry is a name and a document, recorded the
+# same way as the corpus above.
+FIX_CORPUS = [
+    # 2. Empty and blank first scalars. A spaces only line
+    # standing alone, with no content line behind it, reads
+    # as breaks alone however many spaces it carries.
+    ("block spaces only line alone before a sibling", "a: |\n  \nb: 2\n"),
+    ("block spaces only line alone under keep", "a: |+\n  \nb: 2\n"),
+    ("block spaces only line alone under strip", "a: |-\n  \nb: 2\n"),
+    ("block spaces only line alone folded", "a: >\n  \nb: 2\n"),
+    ("block spaces only wide line alone before a sibling", "a: |\n    \nb: 2\n"),
+    ("block spaces only line alone in a sequence", "- |\n  \n- x\n"),
+    ("block spaces only line alone nested", "a:\n  b: |\n    \n  c: 1\n"),
+    ("block spaces only lines alone under keep", "a: |+\n  \n \nb: 2\n"),
+    # 4. Auto detection. A leading blank floor never takes
+    # a line standing at the holding indent as content.
+    ("block auto floor does not take a parent line as content", "a:\n  b: |\n \n  c: 1\n"),
+    ("block auto floor does not take a parent line in a sequence", "- a:\n    b: |\n   \n    c: 1\n"),
+    # 5. Folding mechanics. A blank run bordering a more
+    # indented line keeps the break of the line before it.
+    ("block folded blank run before a more indented line", "a: >\n  one\n\n    ind\n"),
+    ("block folded blank run after a more indented line", "a: >\n  one\n    ind\n\n  two\n"),
+    ("block folded blank run between more indented lines", "a: >\n  one\n    mid\n\n    ind\n"),
+    ("block folded blank run before a tab first line", "a: >\n  one\n\n  \ttwo\n"),
+    ("block folded blank run of two before a more indented line", "a: >\n  one\n\n\n    ind\n"),
+    # 6. Spaces only lines. A spaces only line carrying a
+    # tab at its end stands as content carrying the tab,
+    # also where the block ends on it before a sibling.
+    ("block spaces only line carrying a tab before a sibling", "a: |\n  \t\nb: 2\n"),
+    ("block spaces only line carrying a tab in a sequence", "- |\n  \t\n- x\n"),
+    ("block spaces only line carrying a tab wider before a sibling", "a: |\n   \t\nb: 2\n"),
+    ("block spaces only line carrying a tab under keep", "a: |+\n  \t\nb: 2\n"),
+    # 9. Tabs. The break forms and the quote standing.
+    ("block tab inside content under crlf breaks", "a: |\r\n  x\ty\r\n"),
+    ("block tab inside content under cr breaks", "a: |\r  x\ty\r"),
+    ("block quote inside content does not shelter a separator tab", "x: |\n  'q\na:\t|\n  y\n"),
+]
+
+
 def normalized(text):
     return (
         text.replace("\r\n", "\n")
@@ -270,6 +320,14 @@ def main():
                 "port_stated": True,
             }
         )
+    for name, text in FIX_CORPUS:
+        if name in standing_names:
+            raise SystemExit(f"corpus name {name!r} already stands in the recordings")
+        expect, port_stated = corpus_expect(name, text)
+        case = {"name": name, "text": text, "expect": expect}
+        if port_stated:
+            case["port_stated"] = True
+        values.append(case)
 
     workflows = sections["workflows"]
     for case in workflows:

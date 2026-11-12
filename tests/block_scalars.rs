@@ -374,3 +374,143 @@ fn test_block_content_carrying_a_line_or_paragraph_separator_reads_with_the_one_
         want(mapping(vec![("a", text("one\ntwo\n"))]))
     );
 }
+
+// The fix pass pins. The shapes the round's reviews found
+// the first corpus missing, each one read against the
+// runtime reading before the text of this file moved.
+
+#[test]
+fn test_a_block_holding_only_a_spaces_only_line_reads_empty_before_a_sibling() {
+    assert_eq!(
+        reads("a: |\n  \nb: 2\n"),
+        want(mapping(vec![("a", text("")), ("b", YamlValue::Int(2))]))
+    );
+}
+
+#[test]
+fn test_a_block_holding_only_a_spaces_only_line_under_keep_reads_its_break_alone() {
+    assert_eq!(
+        reads("a: |+\n  \nb: 2\n"),
+        want(mapping(vec![("a", text("\n")), ("b", YamlValue::Int(2))]))
+    );
+}
+
+#[test]
+fn test_a_block_holding_only_a_spaces_only_line_under_strip_reads_empty() {
+    assert_eq!(
+        reads("a: |-\n  \nb: 2\n"),
+        want(mapping(vec![("a", text("")), ("b", YamlValue::Int(2))]))
+    );
+}
+
+#[test]
+fn test_a_block_holding_only_a_wide_spaces_only_line_reads_empty() {
+    assert_eq!(
+        reads("a: |\n    \nb: 2\n"),
+        want(mapping(vec![("a", text("")), ("b", YamlValue::Int(2))]))
+    );
+}
+
+#[test]
+fn test_a_block_holding_only_a_spaces_only_line_in_a_sequence_reads_empty() {
+    assert_eq!(
+        reads("- |\n  \n- x\n"),
+        want(YamlValue::List(vec![text(""), text("x")]))
+    );
+}
+
+#[test]
+fn test_a_spaces_only_line_carrying_a_tab_stands_as_content_before_a_sibling() {
+    assert_eq!(
+        reads("a: |\n  \t\nb: 2\n"),
+        want(mapping(vec![("a", text("\t\n")), ("b", YamlValue::Int(2))]))
+    );
+}
+
+#[test]
+fn test_a_spaces_only_line_carrying_a_tab_stands_as_content_in_a_sequence() {
+    assert_eq!(
+        reads("- |\n  \t\n- x\n"),
+        want(YamlValue::List(vec![text("\t\n"), text("x")]))
+    );
+}
+
+#[test]
+fn test_a_wider_spaces_only_line_carrying_a_tab_stands_as_content_before_a_sibling() {
+    assert_eq!(
+        reads("a: |\n   \t\nb: 2\n"),
+        want(mapping(vec![("a", text("\t\n")), ("b", YamlValue::Int(2))]))
+    );
+}
+
+#[test]
+fn test_a_tab_inside_block_content_reads_under_crlf_breaks() {
+    assert_eq!(
+        reads("a: |\r\n  x\ty\r\n"),
+        want(mapping(vec![("a", text("x\ty\n"))]))
+    );
+}
+
+#[test]
+fn test_a_tab_inside_block_content_reads_under_cr_breaks() {
+    assert_eq!(
+        reads("a: |\r  x\ty\r"),
+        want(mapping(vec![("a", text("x\ty\n"))]))
+    );
+}
+
+#[test]
+fn test_a_quote_inside_block_content_does_not_shelter_a_separator_tab() {
+    assert_eq!(reads("x: |\n  'q\na:\t|\n  y\n"), None);
+}
+
+#[test]
+fn test_a_leading_blank_floor_does_not_take_a_line_at_the_holding_indent_as_content() {
+    assert_eq!(
+        reads("a:\n  b: |\n \n  c: 1\n"),
+        want(mapping(vec![(
+            "a",
+            mapping(vec![("b", text("")), ("c", YamlValue::Int(1))])
+        )]))
+    );
+}
+
+#[test]
+fn test_a_folded_blank_run_before_a_more_indented_line_keeps_the_break_before_it() {
+    assert_eq!(
+        reads("a: >\n  one\n\n    ind\n"),
+        want(mapping(vec![("a", text("one\n\n  ind\n"))]))
+    );
+}
+
+#[test]
+fn test_a_folded_blank_run_after_a_more_indented_line_keeps_the_break_before_it() {
+    assert_eq!(
+        reads("a: >\n  one\n    ind\n\n  two\n"),
+        want(mapping(vec![("a", text("one\n  ind\n\ntwo\n"))]))
+    );
+}
+
+#[test]
+fn test_a_folded_blank_run_between_more_indented_lines_keeps_the_break_before_it() {
+    assert_eq!(
+        reads("a: >\n  one\n    mid\n\n    ind\n"),
+        want(mapping(vec![("a", text("one\n  mid\n\n  ind\n"))]))
+    );
+}
+
+#[test]
+fn test_a_folded_blank_run_before_a_tab_first_line_keeps_the_break_before_it() {
+    assert_eq!(
+        reads("a: >\n  one\n\n  \ttwo\n"),
+        want(mapping(vec![("a", text("one\n\n\ttwo\n"))]))
+    );
+}
+
+#[test]
+fn test_a_folded_blank_run_of_two_before_a_more_indented_line_keeps_every_break() {
+    assert_eq!(
+        reads("a: >\n  one\n\n\n    ind\n"),
+        want(mapping(vec![("a", text("one\n\n\n  ind\n"))]))
+    );
+}
