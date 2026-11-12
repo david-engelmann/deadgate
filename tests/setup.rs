@@ -56,7 +56,7 @@ fn test_readme_status_section_states_the_facts() {
         assert!(lowered.contains(fact), "the status states {fact}");
     }
     assert!(
-        lowered.contains("closed rounds stand at 3 of 100"),
+        lowered.contains("closed rounds stand at 4 of 100"),
         "the status states the closed round count"
     );
 }
