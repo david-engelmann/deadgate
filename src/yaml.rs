@@ -907,9 +907,8 @@ fn block_content_spans(text: &str) -> Vec<(usize, usize)> {
     // content line carrying the tab, as the reader reads it,
     // so it decides the block indent or ends the block like
     // any other content line and its tab stands in the span.
-    let blankish = |li: usize| -> bool {
-        (starts[li]..line_end(li)).all(|index| chars[index] == ' ')
-    };
+    let blankish =
+        |li: usize| -> bool { (starts[li]..line_end(li)).all(|index| chars[index] == ' ') };
     // Find a block head on a line, as the char index of its
     // style mark, its parsed header, and the indent of the
     // node holding the scalar, or nothing when no head stands.
