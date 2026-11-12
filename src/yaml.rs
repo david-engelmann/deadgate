@@ -902,8 +902,13 @@ fn block_content_spans(text: &str) -> Vec<(usize, usize)> {
         }
         count
     };
+    // A line standing as blank here is a line of spaces
+    // alone. A line carrying a tab after its spaces is a
+    // content line carrying the tab, as the reader reads it,
+    // so it decides the block indent or ends the block like
+    // any other content line and its tab stands in the span.
     let blankish = |li: usize| -> bool {
-        (starts[li]..line_end(li)).all(|index| matches!(chars[index], ' ' | '\t'))
+        (starts[li]..line_end(li)).all(|index| chars[index] == ' ')
     };
     // Find a block head on a line, as the char index of its
     // style mark, its parsed header, and the indent of the
@@ -1030,7 +1035,7 @@ fn block_content_spans(text: &str) -> Vec<(usize, usize)> {
             let indent = space_indent(scan);
             match block_indent {
                 None => {
-                    if indent <= parent && floor == 0 {
+                    if indent <= parent {
                         break;
                     }
                     if indent < floor {
@@ -1087,6 +1092,15 @@ fn tab_refused(text: &str) -> bool {
     let mut previous: Option<char> = None;
     let mut chars = text.chars().enumerate().peekable();
     while let Some((index, ch)) = chars.next() {
+        // Characters standing inside block content are
+        // opaque to this scan. A quote or a hash there is
+        // content, never the opening of a quoted scalar or
+        // a comment, so it must not move the state, and a
+        // tab there is exempt by the span itself.
+        if in_span(index) {
+            previous = Some(ch);
+            continue;
+        }
         match state {
             State::Normal => match ch {
                 '\t' => {
@@ -1228,7 +1242,21 @@ pub fn parse_yaml(text: &str) -> Option<YamlValue> {
 }
 
 fn parse_yaml_document(text: &str) -> Option<YamlValue> {
-    if tab_refused(text) {
+    // The runtime reading takes the carriage return forms and
+    // the next line and line separator and paragraph separator
+    // characters all as line breaks, so the text is normalized
+    // to the one break before it is split into lines. The tab
+    // standing is taken over the normalized text, so the block
+    // content spans the tab pass exempts are found under every
+    // break form, the carriage return forms among them, while
+    // the printable screen below runs over the text as given.
+    let normalized = text
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\u{85}', "\n")
+        .replace('\u{2028}', "\n")
+        .replace('\u{2029}', "\n");
+    if tab_refused(&normalized) {
         return None;
     }
     for ch in text.chars() {
@@ -1245,16 +1273,6 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
             return None;
         }
     }
-    // The runtime reading takes the carriage return forms and
-    // the next line and line separator and paragraph separator
-    // characters all as line breaks, so the text is normalized
-    // to the one break before it is split into lines.
-    let normalized = text
-        .replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .replace('\u{85}', "\n")
-        .replace('\u{2028}', "\n")
-        .replace('\u{2029}', "\n");
     let mut lines: Vec<Line> = Vec::new();
     let segments: Vec<&str> = normalized.split('\n').collect();
     let last_segment = segments.len() - 1;
@@ -1885,7 +1903,7 @@ fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> 
                 scan += 1;
                 continue;
             }
-            if line.indent <= parent_indent && floor == 0 {
+            if line.indent <= parent_indent {
                 break;
             }
             if line.indent < floor {
@@ -1923,6 +1941,14 @@ fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> 
         scan += 1;
     }
     let width = block_indent.unwrap_or(parent_indent + 1);
+    // Where no content line ever stood, the block indent was
+    // never decided, and every gathered line is a blank line
+    // standing before a sibling or the end of the document.
+    // Such a line contributes its break alone, however many
+    // spaces it carries, as PORT3-3 states for a leading
+    // spaces only line, so it is classified blank here
+    // rather than read against a width nothing settled.
+    let undecided = block_indent.is_none();
     cursor.pos = scan;
     // Strip the block indent and classify every gathered line.
     struct Piece {
@@ -1935,7 +1961,7 @@ fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> 
     for (raw, has_break) in &raw_lines {
         let spaces = raw.chars().take_while(|ch| *ch == ' ').count();
         let all_spaces = raw.chars().all(|ch| ch == ' ');
-        if all_spaces && spaces <= width {
+        if undecided || (all_spaces && spaces <= width) {
             pieces.push(Piece {
                 content: String::new(),
                 blank: true,
@@ -1990,7 +2016,18 @@ fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> 
                             // Breaks inside a blank run are
                             // counted at the run's last blank.
                         } else if blanks > 0 {
-                            body.push_str(&"\n".repeat(blanks));
+                            // A blank run between two content
+                            // lines gives one break per blank
+                            // line, and where the line before
+                            // the run or the line after it is
+                            // more indented the break of the
+                            // line before the run stands as
+                            // well, since a break beside a
+                            // more indented line is never
+                            // folded away.
+                            let before = &pieces[index - 1 - blanks];
+                            let kept = if before.more || current.more { 1 } else { 0 };
+                            body.push_str(&"\n".repeat(blanks + kept));
                         } else {
                             body.push('\n');
                         }
