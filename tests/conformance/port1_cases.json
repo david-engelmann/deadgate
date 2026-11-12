@@ -1968,9 +1968,28 @@
      "a.yml": "name: w\non: push\njobs:\n  j:\n    steps:\n      - run: |\n          echo hi\n"
     },
     "expect": {
-     "err": "workflow file at {WFILE:a.yml} does not parse"
-    },
-    "port_stated": true
+     "ok": [
+      {
+       "workflow": "w",
+       "file": "a.yml",
+       "triggers": {
+        "t": "str",
+        "v": "push"
+       },
+       "jobs": [
+        [
+         "j",
+         {
+          "job": "j",
+          "job_name": "j",
+          "has_if": false,
+          "combinations": null
+         }
+        ]
+       ]
+      }
+     ]
+    }
    },
    {
     "name": "anchor value",
@@ -3985,16 +4004,57 @@
    {
     "text": "a: |\n  block\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          98,
+          108,
+          111,
+          99,
+          107,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
    },
    {
     "text": "a: >\n  folded\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          102,
+          111,
+          108,
+          100,
+          101,
+          100,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
    },
    {
     "text": "a: !!str 5\n",
@@ -4843,6 +4903,2393 @@
     "expect": {
      "err": "ScannerError"
     }
+   },
+   {
+    "name": "block clip folded two lines",
+    "text": "a: >\n  one\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          32,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block strip literal",
+    "text": "a: |-\n  one\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          116,
+          119,
+          111
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block strip folded no final break",
+    "text": "a: >-\n  one\n  two",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "one two"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block keep literal trailing blank",
+    "text": "a: |+\n  one\n\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block keep folded trailing blanks at end of file",
+    "text": "a: >+\n  one\n\n\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block clip no final break",
+    "text": "a: |\n  one\n  two",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          116,
+          119,
+          111
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block keep no final break",
+    "text": "a: |+\n  one",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "one"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block strip trailing blanks before a sibling",
+    "text": "a: |-\n  one\n\n\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "one"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block clip trailing blanks before a sibling",
+    "text": "a: |\n  one\n\n\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block keep trailing blanks before a sibling",
+    "text": "a: |+\n  one\n\n\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded clip before a sibling",
+    "text": "a: >\n  one\n  two\n\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          32,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block empty clip before a sibling",
+    "text": "a: |\nb: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block empty strip at end of file",
+    "text": "a: |-\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block empty keep at end of file",
+    "text": "a: |+\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block blank only clip",
+    "text": "a: |\n\n\nb: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block blank only keep",
+    "text": "a: |+\n\n\nb: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block blank only strip",
+    "text": "a: |-\n\n\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block blanks before content clip",
+    "text": "a: |\n\n\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          10,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block blanks before content keep",
+    "text": "a: |+\n\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit digit in the middle",
+    "text": "a: |2\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit digit one",
+    "text": "a: |1\n x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit digit nine",
+    "text": "a: |9\n         x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit chomping first",
+    "text": "a: |-2\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit digit first strip",
+    "text": "a: |2-\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit keep chomping first",
+    "text": "a: |+2\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit keep digit first",
+    "text": "a: |2+\n  x\n\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit content past the width",
+    "text": "a: |2\n    x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          32,
+          32,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit first line short refuses",
+    "text": "a: |4\n  x\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "block explicit reads empty before a sibling",
+    "text": "a: |2\nb: x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": ""
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "str",
+         "v": "x"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit at the root",
+    "text": "|2\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       120,
+       10
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit sequence entry",
+    "text": "- |2\n  x\n- y\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "strcp",
+        "v": [
+         120,
+         10
+        ]
+       },
+       {
+        "t": "str",
+        "v": "y"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit sequence entry mapping",
+    "text": "- run: |2\n    echo hi\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "run"
+          },
+          {
+           "t": "strcp",
+           "v": [
+            101,
+            99,
+            104,
+            111,
+            32,
+            104,
+            105,
+            10
+           ]
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit nested mapping value",
+    "text": "a:\n  b: |2\n    x\n  c: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "strcp",
+            "v": [
+             120,
+             10
+            ]
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block explicit leading spaces only past the width",
+    "text": "a: |+2\n     \n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          32,
+          32,
+          32,
+          10,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto later line below refuses",
+    "text": "a: |\n    x\n  y\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "block auto sibling ends the scalar",
+    "text": "a: |\n  x\nb: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto leading blank floor refuses",
+    "text": "a: |\n   \n  x\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "block auto leading blank floor reads",
+    "text": "a: |\n \n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto sequence sibling ends the scalar",
+    "text": "- |\n    x\n- y\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "strcp",
+        "v": [
+         120,
+         10
+        ]
+       },
+       {
+        "t": "str",
+        "v": "y"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto later line past the indent",
+    "text": "a: |\n  x\n    y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          32,
+          32,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block auto nested sibling reads",
+    "text": "a:\n  b: >\n      ind\n  c: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "strcp",
+            "v": [
+             105,
+             110,
+             100,
+             10
+            ]
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded plain run",
+    "text": "a: >\n  one\n  two\n  three\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          32,
+          116,
+          119,
+          111,
+          32,
+          116,
+          104,
+          114,
+          101,
+          101,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run of one",
+    "text": "a: >\n  one\n\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run of two",
+    "text": "a: >\n  one\n\n\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank run of three",
+    "text": "a: >\n  one\n\n\n\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          10,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded more indented first line",
+    "text": "a: >\n    ind\n  one\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "block folded more indented middle",
+    "text": "a: >\n  one\n    ind\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          32,
+          32,
+          105,
+          110,
+          100,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded more indented end",
+    "text": "a: >\n  one\n    ind\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          32,
+          32,
+          105,
+          110,
+          100,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded more indented run",
+    "text": "a: >\n  one\n    a\n    b\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          32,
+          32,
+          97,
+          10,
+          32,
+          32,
+          98,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block literal trailing spaces",
+    "text": "a: |\n  one  \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          32,
+          32,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded trailing spaces",
+    "text": "a: >\n  one  \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          32,
+          32,
+          32,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block folded blank first line",
+    "text": "a: >\n\n    x\n    y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          120,
+          32,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block literal blank first line",
+    "text": "a: |\n\n    x\n    y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          120,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only at the width",
+    "text": "a: |\n  x\n  \n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only past the width literal",
+    "text": "a: |\n  x\n    \n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          32,
+          32,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only past the width folded",
+    "text": "a: >\n  x\n    \n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          32,
+          32,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only below the width",
+    "text": "a: |\n  x\n \n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block spaces only carrying a tab",
+    "text": "a: |\n  x\n  \t\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          9,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block at the root literal",
+    "text": "|\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       120,
+       10
+      ]
+     }
+    }
+   },
+   {
+    "name": "block at the root folded",
+    "text": ">\n  x\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       120,
+       32,
+       121,
+       10
+      ]
+     }
+    }
+   },
+   {
+    "name": "block deep mapping value",
+    "text": "a:\n  b:\n    c: |\n      deep\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "c"
+              },
+              {
+               "t": "strcp",
+               "v": [
+                100,
+                101,
+                101,
+                112,
+                10
+               ]
+              }
+             ]
+            ]
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block dash line folded entry",
+    "text": "- >\n  x\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "strcp",
+        "v": [
+         120,
+         32,
+         121,
+         10
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block bare dash entry",
+    "text": "-\n  |\n    x\n- y\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "strcp",
+        "v": [
+         120,
+         10
+        ]
+       },
+       {
+        "t": "str",
+        "v": "y"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "block sibling blocks",
+    "text": "a: |\n  one\nb: >\n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block workflow run shape",
+    "text": "steps:\n  - run: |\n      echo hi\n      echo bye\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "steps"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "obj",
+           "v": [
+            [
+             {
+              "t": "str",
+              "v": "run"
+             },
+             {
+              "t": "strcp",
+              "v": [
+               101,
+               99,
+               104,
+               111,
+               32,
+               104,
+               105,
+               10,
+               101,
+               99,
+               104,
+               111,
+               32,
+               98,
+               121,
+               101,
+               10
+              ]
+             }
+            ]
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block header comment after a space",
+    "text": "a: | # c\n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block header comment without a space refuses",
+    "text": "a: |# c\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header trailing spaces read",
+    "text": "a: |  \n  x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block header junk after refuses",
+    "text": "a: | x\n  y\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header word after chomping refuses",
+    "text": "a: |- x\n  y\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header separated indicator refuses",
+    "text": "a: | -\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header two chomping marks refuse",
+    "text": "a: |+-\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header doubled minus refuses",
+    "text": "a: |--\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header indicator zero refuses",
+    "text": "a: |0\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header two digits refuse",
+    "text": "a: |12\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block header letter indicator refuses",
+    "text": "a: |a\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block tab inside a literal line",
+    "text": "a: |\n  one\ttwo\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          9,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block tab as first content character",
+    "text": "a: |\n  \tx\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          9,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block tab inside a folded line",
+    "text": "a: >\n  one\ttwo\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          9,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block tab in indentation refuses",
+    "text": "a: |\n\tx\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block tab opening a later line refuses",
+    "text": "a: |\n  x\n\ty\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block tab after the header mark refuses",
+    "text": "a: |\t\n  x\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block folded tab as first content character",
+    "text": "a: >\n  \tx\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          9,
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block end marker at column zero",
+    "text": "a: |\n  x\n...\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block end marker with a comment",
+    "text": "a: |\n  x\n... # end\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block end marker with junk refuses",
+    "text": "a: |\n  x\n... junk\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "block opener at column zero refuses",
+    "text": "a: |\n  x\n---\nb: 1\n",
+    "expect": {
+     "err": "ComposerError"
+    }
+   },
+   {
+    "name": "block end marker indented is content",
+    "text": "a: |\n  x\n  ...\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          46,
+          46,
+          46,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block opener indented is content",
+    "text": "a: |\n  ---\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          45,
+          45,
+          45,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block percent indented is content",
+    "text": "a: |\n  %YAML\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          37,
+          89,
+          65,
+          77,
+          76,
+          10,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block percent at column zero refuses",
+    "text": "a: |\n  x\n%YAML 1.2\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "block head in a flow mapping refuses",
+    "text": "{a: |}\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block head after a flow entry refuses",
+    "text": "[1, |]\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "block head behind an anchor refuses",
+    "text": "a: &x |\n  y\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "block head behind a tag refuses",
+    "text": "a: !!str |\n  y\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "block scalar as an explicit key refuses",
+    "text": "? |\n  x\n: 1\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "block content spelling a number",
+    "text": "a: |\n  42\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          52,
+          50,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block content spelling a boolean",
+    "text": "a: |\n  true\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          116,
+          114,
+          117,
+          101,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block content spelling a date",
+    "text": "a: |\n  2026-10-14\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          50,
+          48,
+          50,
+          54,
+          45,
+          49,
+          48,
+          45,
+          49,
+          52,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block content spelling a null word",
+    "text": "a: |\n  null\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          110,
+          117,
+          108,
+          108,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block line separator inside literal content",
+    "text": "a: |\n  one two\n",
+    "expect": {
+     "err": "ScannerError"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "block paragraph separator at the end under keep",
+    "text": "a: |+\n  one ",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    "port_stated": true
+   },
+   {
+    "name": "block line separator inside folded content",
+    "text": "a: >\n  one two\n",
+    "expect": {
+     "err": "ScannerError"
+    },
+    "port_stated": true
    }
   ],
   "yaml_strings": [
@@ -5054,6 +7501,20 @@
     "expect": {
      "str": "{True: 1, False: 2}",
      "repr": "{True: 1, False: 2}"
+    }
+   },
+   {
+    "text": "|\n  block\n",
+    "expect": {
+     "str": "block\n",
+     "repr": "'block\\n'"
+    }
+   },
+   {
+    "text": ">\n  folded\n",
+    "expect": {
+     "str": "folded\n",
+     "repr": "'folded\\n'"
     }
    }
   ],
