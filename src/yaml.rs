@@ -8,10 +8,11 @@
 //! plain scalars with the resolver of the runtime, the YAML 1.1
 //! spellings standing as the probe recorded them. The limits the
 //! contract states stand at the edges, anchors and aliases and
-//! merge keys and tags and block scalars and document apparatus
-//! beyond one leading opener and one trailing closer refused,
-//! quoted scalars spanning lines refused, a mapping key that is
-//! a container refused, and nesting bounded at 4000. A scalar
+//! merge keys and tags and document apparatus beyond one leading
+//! opener and one trailing closer refused, block scalars refused
+//! in flow position and read in block position, quoted scalars
+//! spanning lines refused, a mapping key that is a container
+//! refused, and nesting bounded at 4000. A scalar
 //! the resolver reads as a date or a timestamp whose value does
 //! not stand refuses the document, as the Python command dies on
 //! it with an uncaught error.
@@ -820,6 +821,12 @@ pub fn resolve_plain_scalar(text: &str) -> Option<YamlValue> {
 struct Line {
     indent: usize,
     text: String,
+    /// The whole raw line, its leading spaces standing in it,
+    /// as the block scalar reading consumes it.
+    raw: String,
+    /// Whether a line break stands behind this line in the
+    /// source, the last line of the text carrying none.
+    has_break: bool,
 }
 
 struct Cursor {
@@ -862,10 +869,217 @@ fn insert_pair(pairs: &mut Vec<(YamlKey, YamlValue)>, key: YamlKey, value: YamlV
     }
 }
 
+/// The char spans of the lines standing inside block scalar
+/// content, as a pre-scan over the text finds them, so the tab
+/// standing can exempt the tabs that stand inside block
+/// content after the line's space indent. The scan tracks the
+/// header grammar of PORT3-1 in outline and the indent rules
+/// of PORT3-2 and PORT3-3, and it errs on the side of a
+/// narrower span, because a tab it fails to exempt refuses in
+/// the tab pass while a tab it wrongly exempts still meets the
+/// readers, which refuse tabs in their own positions.
+fn block_content_spans(text: &str) -> Vec<(usize, usize)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut starts: Vec<usize> = vec![0];
+    for (index, ch) in chars.iter().enumerate() {
+        if *ch == '\n' {
+            starts.push(index + 1);
+        }
+    }
+    let line_end = |li: usize| -> usize {
+        if li + 1 < starts.len() {
+            starts[li + 1] - 1
+        } else {
+            chars.len()
+        }
+    };
+    let space_indent = |li: usize| -> usize {
+        let mut count = 0;
+        let mut index = starts[li];
+        while index < chars.len() && chars[index] == ' ' {
+            count += 1;
+            index += 1;
+        }
+        count
+    };
+    // A line standing as blank here is a line of spaces
+    // alone. A line carrying a tab after its spaces is a
+    // content line carrying the tab, as the reader reads it,
+    // so it decides the block indent or ends the block like
+    // any other content line and its tab stands in the span.
+    let blankish =
+        |li: usize| -> bool { (starts[li]..line_end(li)).all(|index| chars[index] == ' ') };
+    // Find a block head on a line, as the char index of its
+    // style mark, its parsed header, and the indent of the
+    // node holding the scalar, or nothing when no head stands.
+    let find_head = |li: usize| -> Option<(usize, Option<usize>, usize)> {
+        let start = starts[li];
+        let end = line_end(li);
+        #[derive(PartialEq)]
+        enum St {
+            Normal,
+            Single,
+            Double,
+            Comment,
+        }
+        let mut state = St::Normal;
+        let mut index = start;
+        let mut previous: Option<char> = None;
+        while index < end {
+            let ch = chars[index];
+            match state {
+                St::Normal => match ch {
+                    '#' if matches!(previous, None | Some(' ')) => state = St::Comment,
+                    '\'' => state = St::Single,
+                    '"' => state = St::Double,
+                    '|' | '>' => {
+                        // The header grammar, in outline.
+                        let mut cursor = index + 1;
+                        let mut chomping = false;
+                        let mut digit: Option<usize> = None;
+                        let mut valid = true;
+                        while cursor < end {
+                            match chars[cursor] {
+                                '+' | '-' if !chomping => {
+                                    chomping = true;
+                                    cursor += 1;
+                                }
+                                '1'..='9' if digit.is_none() => {
+                                    digit = Some(chars[cursor] as usize - '0' as usize);
+                                    cursor += 1;
+                                }
+                                _ => break,
+                            }
+                        }
+                        while cursor < end && chars[cursor] == ' ' {
+                            cursor += 1;
+                        }
+                        if cursor < end && chars[cursor] != '#' {
+                            valid = false;
+                        }
+                        if !valid {
+                            return None;
+                        }
+                        // The holding node's indent. A head
+                        // behind a key takes the key's indent,
+                        // a head behind a dash takes the dash
+                        // line's indent, and a head standing
+                        // alone at the root takes 0.
+                        let prefix: String = chars[start..index].iter().collect();
+                        let trimmed = prefix.trim_end();
+                        let parent = if trimmed.is_empty() {
+                            0
+                        } else if trimmed == "-" || trimmed.ends_with(" -") {
+                            space_indent(li)
+                        } else if trimmed.ends_with(':') {
+                            let mut key_start = space_indent(li);
+                            let body = &chars[start + key_start..index];
+                            if body.first() == Some(&'-') {
+                                let mut walk = 1;
+                                while walk < body.len() && body[walk] == ' ' {
+                                    walk += 1;
+                                }
+                                key_start += walk;
+                            }
+                            key_start
+                        } else {
+                            return None;
+                        };
+                        return Some((index, digit, parent));
+                    }
+                    _ => {}
+                },
+                St::Comment => {}
+                St::Single => {
+                    if ch == '\'' {
+                        state = St::Normal;
+                    }
+                }
+                St::Double => match ch {
+                    '\\' => {
+                        index += 1;
+                    }
+                    '"' => state = St::Normal,
+                    _ => {}
+                },
+            }
+            previous = Some(ch);
+            index += 1;
+        }
+        None
+    };
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut li = 0;
+    while li < starts.len() {
+        let Some((_, digit, parent)) = find_head(li) else {
+            li += 1;
+            continue;
+        };
+        let mut block_indent: Option<usize> = digit.map(|digit| parent + digit);
+        let mut floor = 0usize;
+        let mut scan = li + 1;
+        let mut content: Vec<usize> = Vec::new();
+        let mut pending: Vec<usize> = Vec::new();
+        let mut decided = block_indent.is_some();
+        while scan < starts.len() {
+            if blankish(scan) {
+                let spaces = space_indent(scan);
+                if !decided && spaces > floor {
+                    floor = spaces;
+                }
+                pending.push(scan);
+                scan += 1;
+                continue;
+            }
+            let indent = space_indent(scan);
+            match block_indent {
+                None => {
+                    if indent <= parent {
+                        break;
+                    }
+                    if indent < floor {
+                        break;
+                    }
+                    block_indent = Some(indent);
+                    decided = true;
+                    content.append(&mut pending);
+                    content.push(scan);
+                    scan += 1;
+                }
+                Some(width) => {
+                    if indent < width {
+                        break;
+                    }
+                    content.append(&mut pending);
+                    content.push(scan);
+                    scan += 1;
+                }
+            }
+        }
+        // Trailing blank lines stand inside the span only
+        // where a tab stands on them past the block indent.
+        if let Some(width) = block_indent {
+            for pending_line in pending {
+                if space_indent(pending_line) >= width {
+                    content.push(pending_line);
+                }
+            }
+        }
+        for line in content {
+            spans.push((starts[line], line_end(line)));
+        }
+        li = if scan > li { scan } else { li + 1 };
+    }
+    spans
+}
+
 /// Whether a tab stands anywhere the runtime scanner refuses
 /// one, which is everywhere outside a quoted scalar and a
-/// comment, as the tab probe recorded.
+/// comment and block scalar content, as the tab probe
+/// recorded.
 fn tab_refused(text: &str) -> bool {
+    let spans = block_content_spans(text);
+    let in_span = |index: usize| spans.iter().any(|(lo, hi)| index >= *lo && index < *hi);
     #[derive(PartialEq)]
     enum State {
         Normal,
@@ -875,11 +1089,24 @@ fn tab_refused(text: &str) -> bool {
     }
     let mut state = State::Normal;
     let mut previous: Option<char> = None;
-    let mut chars = text.chars().peekable();
-    while let Some(ch) = chars.next() {
+    let mut chars = text.chars().enumerate().peekable();
+    while let Some((index, ch)) = chars.next() {
+        // Characters standing inside block content are
+        // opaque to this scan. A quote or a hash there is
+        // content, never the opening of a quoted scalar or
+        // a comment, so it must not move the state, and a
+        // tab there is exempt by the span itself.
+        if in_span(index) {
+            previous = Some(ch);
+            continue;
+        }
         match state {
             State::Normal => match ch {
-                '\t' => return true,
+                '\t' => {
+                    if !in_span(index) {
+                        return true;
+                    }
+                }
                 '\n' => {}
                 '#' if matches!(previous, None | Some(' ' | '\n' | ',' | '[' | '{')) => {
                     state = State::Comment;
@@ -907,7 +1134,7 @@ fn tab_refused(text: &str) -> bool {
             }
             State::Single => {
                 if ch == '\'' {
-                    if chars.peek() == Some(&'\'') {
+                    if matches!(chars.peek(), Some((_, '\''))) {
                         chars.next();
                         previous = Some('\'');
                         continue;
@@ -1014,7 +1241,21 @@ pub fn parse_yaml(text: &str) -> Option<YamlValue> {
 }
 
 fn parse_yaml_document(text: &str) -> Option<YamlValue> {
-    if tab_refused(text) {
+    // The runtime reading takes the carriage return forms and
+    // the next line and line separator and paragraph separator
+    // characters all as line breaks, so the text is normalized
+    // to the one break before it is split into lines. The tab
+    // standing is taken over the normalized text, so the block
+    // content spans the tab pass exempts are found under every
+    // break form, the carriage return forms among them, while
+    // the printable screen below runs over the text as given.
+    let normalized = text
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\u{85}', "\n")
+        .replace('\u{2028}', "\n")
+        .replace('\u{2029}', "\n");
+    if tab_refused(&normalized) {
         return None;
     }
     for ch in text.chars() {
@@ -1031,38 +1272,27 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
             return None;
         }
     }
-    // The runtime reading takes the carriage return forms and
-    // the next line and line separator and paragraph separator
-    // characters all as line breaks, so the text is normalized
-    // to the one break before it is split into lines.
-    let normalized = text
-        .replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .replace('\u{85}', "\n")
-        .replace('\u{2028}', "\n")
-        .replace('\u{2029}', "\n");
     let mut lines: Vec<Line> = Vec::new();
-    for raw in normalized.split('\n') {
+    let segments: Vec<&str> = normalized.split('\n').collect();
+    let last_segment = segments.len() - 1;
+    for (index, raw) in segments.iter().enumerate() {
         let mut indent = 0usize;
-        let mut tabbed = false;
         let mut content_start = raw.len();
-        for (index, ch) in raw.char_indices() {
+        for (position, ch) in raw.char_indices() {
             match ch {
                 ' ' => indent += 1,
-                '\t' => tabbed = true,
                 _ => {
-                    content_start = index;
+                    content_start = position;
                     break;
                 }
             }
         }
-        let content = &raw[content_start.min(raw.len())..];
-        if tabbed && !content.trim().is_empty() {
-            return None;
-        }
+        let content = &raw[content_start..];
         lines.push(Line {
             indent,
             text: content.to_string(),
+            raw: raw.to_string(),
+            has_break: index < last_segment,
         });
     }
     let mut cursor = Cursor { lines, pos: 0 };
@@ -1094,9 +1324,12 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
             start = cursor.next_content(start + 1).unwrap_or(cursor.lines.len());
         } else if let Some(rest) = text.strip_prefix("--- ") {
             opener_seen = true;
+            let standing = cursor.lines[start].clone();
             cursor.lines[start] = Line {
                 indent: 0,
                 text: rest.to_string(),
+                raw: rest.to_string(),
+                has_break: standing.has_break,
             };
         }
         break;
@@ -1109,10 +1342,11 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
         let mut index = start;
         while let Some(found) = cursor.next_content(index) {
             let text = cursor.lines[found].text.clone();
-            if text == "---" || text.starts_with("--- ") || text.starts_with('%') {
+            let column_zero = cursor.lines[found].indent == 0;
+            if column_zero && (text == "---" || text.starts_with("--- ") || text.starts_with('%')) {
                 return None;
             }
-            if text == "..." || text.starts_with("... ") {
+            if column_zero && (text == "..." || text.starts_with("... ")) {
                 // A document end marker may carry a comment
                 // behind it and still end the document, as the
                 // runtime reading takes it. Any other words
@@ -1136,26 +1370,29 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     if cursor.peek_content().is_none() {
         return Some(YamlValue::Null);
     }
-    let value = parse_block(&mut cursor, 0)?;
+    let value = parse_block(&mut cursor, 0, 0)?;
     if cursor.peek_content().is_some() {
         return None;
     }
     Some(value)
 }
 
-fn parse_block(cursor: &mut Cursor, depth: usize) -> Option<YamlValue> {
+fn parse_block(cursor: &mut Cursor, parent_indent: usize, depth: usize) -> Option<YamlValue> {
     if depth > MAX_YAML_NESTING {
         return None;
     }
     let li = cursor.peek_content()?;
     let line = cursor.lines[li].clone();
+    if line.text.starts_with('\t') {
+        return None;
+    }
     if is_dash_line(&line) {
         parse_sequence(cursor, line.indent, depth)
     } else if find_key_split(&line.text).is_some() {
         parse_mapping(cursor, line.indent, depth)
     } else {
         cursor.pos = li + 1;
-        parse_inline_value(&line.text, cursor, line.indent, depth)
+        parse_inline_value(&line.text, cursor, line.indent, parent_indent, depth)
     }
 }
 
@@ -1172,6 +1409,9 @@ fn parse_mapping(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Yam
         if line.indent > indent {
             return None;
         }
+        if line.text.starts_with('\t') {
+            return None;
+        }
         if is_dash_line(&line) {
             break;
         }
@@ -1186,7 +1426,7 @@ fn parse_mapping(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Yam
                 Some(nj) => {
                     let next = cursor.lines[nj].clone();
                     if next.indent > indent {
-                        parse_block(cursor, depth + 1)?
+                        parse_block(cursor, indent, depth + 1)?
                     } else if next.indent == indent && is_dash_line(&next) {
                         parse_sequence(cursor, indent, depth + 1)?
                     } else {
@@ -1195,7 +1435,7 @@ fn parse_mapping(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Yam
                 }
             }
         } else {
-            parse_inline_value(&rest, cursor, indent, depth + 1)?
+            parse_inline_value(&rest, cursor, indent, indent, depth + 1)?
         };
         insert_pair(&mut pairs, key, value);
     }
@@ -1215,6 +1455,9 @@ fn parse_sequence(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Ya
         if line.indent < indent || !is_dash_line(&line) {
             break;
         }
+        if line.text.starts_with('\t') {
+            return None;
+        }
         let after = &line.text[1..];
         let content = after.trim_start().to_string();
         if content.is_empty() || content.starts_with('#') {
@@ -1224,7 +1467,7 @@ fn parse_sequence(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Ya
                 Some(nj) => {
                     let next = cursor.lines[nj].clone();
                     if next.indent > indent {
-                        parse_block(cursor, depth + 1)?
+                        parse_block(cursor, indent, depth + 1)?
                     } else {
                         YamlValue::Null
                     }
@@ -1236,16 +1479,19 @@ fn parse_sequence(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Ya
         let lead = after.len() - after.trim_start().len();
         let virtual_indent = indent + 1 + lead;
         if is_dash_text(&content) || find_key_split(&content).is_some() {
+            let standing_break = line.has_break;
             cursor.lines[li] = Line {
                 indent: virtual_indent,
-                text: content,
+                text: content.clone(),
+                raw: content,
+                has_break: standing_break,
             };
             cursor.pos = li;
-            let value = parse_block(cursor, depth + 1)?;
+            let value = parse_block(cursor, indent, depth + 1)?;
             items.push(value);
         } else {
             cursor.pos = li + 1;
-            let value = parse_inline_value(&content, cursor, indent, depth + 1)?;
+            let value = parse_inline_value(&content, cursor, indent, indent, depth + 1)?;
             items.push(value);
         }
     }
@@ -1456,9 +1702,13 @@ fn parse_inline_value(
     text: &str,
     cursor: &mut Cursor,
     block_indent: usize,
+    parent_indent: usize,
     depth: usize,
 ) -> Option<YamlValue> {
     let first = text.chars().next()?;
+    if first == '|' || first == '>' {
+        return parse_block_scalar(text, cursor, parent_indent);
+    }
     match first {
         '[' | '{' => {
             let mut combined = text.to_string();
@@ -1490,7 +1740,7 @@ fn parse_inline_value(
             check_trailing(&text[end..])?;
             Some(YamlValue::Text(value))
         }
-        '&' | '*' | '!' | '|' | '>' | '%' | '@' | '`' | ']' | '}' | ',' => None,
+        '&' | '*' | '!' | '%' | '@' | '`' | ']' | '}' | ',' => None,
         '?' if text == "?" || text.starts_with("? ") => None,
         ':' if text == ":" || text.starts_with(": ") => None,
         '-' if text == "-" || text.starts_with("- ") => None,
@@ -1562,6 +1812,274 @@ fn parse_inline_value(
             resolve_plain_scalar(&folded)
         }
     }
+}
+
+// ----------------------------------------------------------------
+// Block scalars, PORT3
+// ----------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq)]
+enum Chomping {
+    Clip,
+    Strip,
+    Keep,
+}
+
+/// The shape a dedented first line takes when it is no
+/// sibling and no content, the shapes under which PORT3-2
+/// reads the scalar as empty and lets the document stand or
+/// refuse on the line as it stands outside a block. A line
+/// parses as a sibling when it stands at or above the holding
+/// node's indent in a mapping entry or a dash entry shape,
+/// and a document end marker at column 0 ends the scalar the
+/// same way.
+fn sibling_or_end_shape(line: &Line, parent_indent: usize) -> bool {
+    if line.indent == 0 && (line.text == "..." || line.text.starts_with("... ")) {
+        return true;
+    }
+    line.indent <= parent_indent && (find_key_split(&line.text).is_some() || is_dash_line(line))
+}
+
+/// Read a block scalar whose head stands in `text`, the lines
+/// of the scalar standing in the cursor at its standing
+/// position, under PORT3-1 to PORT3-5. The holding node's
+/// indent is `parent_indent`. On a reading the cursor stands
+/// on the first line that is not part of the scalar.
+fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> Option<YamlValue> {
+    let bytes = text.as_bytes();
+    let folded = bytes[0] == b'>';
+    let mut index = 1usize;
+    let mut chomping = Chomping::Clip;
+    let mut chomping_seen = false;
+    let mut digit: Option<usize> = None;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' if !chomping_seen => {
+                chomping = Chomping::Keep;
+                chomping_seen = true;
+                index += 1;
+            }
+            b'-' if !chomping_seen => {
+                chomping = Chomping::Strip;
+                chomping_seen = true;
+                index += 1;
+            }
+            b'1'..=b'9' if digit.is_none() => {
+                digit = Some((bytes[index] - b'0') as usize);
+                index += 1;
+            }
+            _ => break,
+        }
+    }
+    // The header line after the indicators holds only spaces
+    // and then optionally a comment, and a comment stands
+    // only where a space stands in front of its hash, so a
+    // hash standing directly against the mark or an indicator
+    // refuses.
+    let rest = &text[index..];
+    if !rest.is_empty() && !rest.starts_with(' ') {
+        return None;
+    }
+    check_trailing(rest)?;
+    let explicit = digit.map(|digit| parent_indent + digit);
+    // Gather the lines of the block, walking the line vector
+    // directly, no line skipped as blank or as a comment.
+    let mut raw_lines: Vec<(String, bool)> = Vec::new();
+    let mut scan = cursor.pos;
+    let mut block_indent: Option<usize> = explicit;
+    let mut floor = 0usize;
+    let mut decided = explicit.is_some();
+    let mut first_content: Option<usize> = None;
+    while scan < cursor.lines.len() {
+        let line = cursor.lines[scan].clone();
+        let is_blank = line.text.is_empty();
+        if !decided {
+            if is_blank {
+                if line.indent > floor {
+                    floor = line.indent;
+                }
+                raw_lines.push((line.raw.clone(), line.has_break));
+                scan += 1;
+                continue;
+            }
+            if line.indent <= parent_indent {
+                break;
+            }
+            if line.indent < floor {
+                if sibling_or_end_shape(&line, parent_indent) {
+                    break;
+                }
+                return None;
+            }
+            block_indent = Some(line.indent);
+            decided = true;
+            first_content = Some(raw_lines.len());
+            raw_lines.push((line.raw.clone(), line.has_break));
+            scan += 1;
+            continue;
+        }
+        let width = block_indent.expect("decided width");
+        if is_blank {
+            raw_lines.push((line.raw.clone(), line.has_break));
+            scan += 1;
+            continue;
+        }
+        if line.indent < width {
+            if first_content.is_none() {
+                if sibling_or_end_shape(&line, parent_indent) {
+                    break;
+                }
+                return None;
+            }
+            break;
+        }
+        if first_content.is_none() {
+            first_content = Some(raw_lines.len());
+        }
+        raw_lines.push((line.raw.clone(), line.has_break));
+        scan += 1;
+    }
+    let width = block_indent.unwrap_or(parent_indent + 1);
+    // Where no content line ever stood, the block indent was
+    // never decided, and every gathered line is a blank line
+    // standing before a sibling or the end of the document.
+    // Such a line contributes its break alone, however many
+    // spaces it carries, as PORT3-3 states for a leading
+    // spaces only line, so it is classified blank here
+    // rather than read against a width nothing settled.
+    let undecided = block_indent.is_none();
+    cursor.pos = scan;
+    // Strip the block indent and classify every gathered line.
+    struct Piece {
+        content: String,
+        blank: bool,
+        more: bool,
+        has_break: bool,
+    }
+    let mut pieces: Vec<Piece> = Vec::new();
+    for (raw, has_break) in &raw_lines {
+        let spaces = raw.chars().take_while(|ch| *ch == ' ').count();
+        let all_spaces = raw.chars().all(|ch| ch == ' ');
+        if undecided || (all_spaces && spaces <= width) {
+            pieces.push(Piece {
+                content: String::new(),
+                blank: true,
+                more: false,
+                has_break: *has_break,
+            });
+        } else {
+            let content: String = raw.chars().skip(width).collect();
+            let more = spaces > width || content.starts_with('\t');
+            pieces.push(Piece {
+                content,
+                blank: false,
+                more,
+                has_break: *has_break,
+            });
+        }
+    }
+    // Assemble the value before its final break, counting the
+    // breaks that stand at its end for the chomping.
+    let first = pieces.iter().position(|piece| !piece.blank);
+    let last = pieces.iter().rposition(|piece| !piece.blank);
+    let (body, trailing) = match (first, last) {
+        (Some(first), Some(last)) => {
+            // Blank lines standing before the content count
+            // one break each in the value, under every
+            // chomping, once content follows.
+            let mut body = "\n".repeat(first);
+            for index in first..=last {
+                if index > first {
+                    let previous = &pieces[index - 1];
+                    let current = &pieces[index];
+                    if !folded {
+                        body.push('\n');
+                    } else if previous.blank || current.blank {
+                        let blanks = {
+                            let mut count = 0;
+                            let mut walk = index - 1;
+                            loop {
+                                if pieces[walk].blank {
+                                    count += 1;
+                                    if walk == first {
+                                        break;
+                                    }
+                                    walk -= 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            count
+                        };
+                        if current.blank {
+                            // Breaks inside a blank run are
+                            // counted at the run's last blank.
+                        } else if blanks > 0 {
+                            // A blank run between two content
+                            // lines gives one break per blank
+                            // line, and where the line before
+                            // the run or the line after it is
+                            // more indented the break of the
+                            // line before the run stands as
+                            // well, since a break beside a
+                            // more indented line is never
+                            // folded away.
+                            let before = &pieces[index - 1 - blanks];
+                            let kept = if before.more || current.more { 1 } else { 0 };
+                            body.push_str(&"\n".repeat(blanks + kept));
+                        } else {
+                            body.push('\n');
+                        }
+                        if current.blank && index == last {
+                            body.push('\n');
+                        }
+                    } else if previous.more || current.more {
+                        body.push('\n');
+                    } else {
+                        body.push(' ');
+                    }
+                }
+                body.push_str(&pieces[index].content);
+            }
+            let last_piece = &pieces[last];
+            let mut trailing = if last_piece.has_break { 1usize } else { 0usize };
+            for piece in &pieces[last + 1..] {
+                if piece.has_break {
+                    trailing += 1;
+                }
+            }
+            (body, trailing)
+        }
+        _ => {
+            let mut breaks = 0usize;
+            for piece in &pieces {
+                if piece.has_break {
+                    breaks += 1;
+                }
+            }
+            (String::new(), breaks)
+        }
+    };
+    let value = match chomping {
+        Chomping::Strip => body,
+        Chomping::Clip => {
+            if body.is_empty() {
+                body
+            } else if trailing > 0 {
+                format!("{body}\n")
+            } else {
+                body
+            }
+        }
+        Chomping::Keep => {
+            if body.is_empty() {
+                "\n".repeat(trailing)
+            } else {
+                format!("{body}{}", "\n".repeat(trailing))
+            }
+        }
+    };
+    Some(YamlValue::Text(value))
 }
 
 /// Whether the brackets of a flow text stand balanced, quotes
