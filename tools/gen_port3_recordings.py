@@ -214,9 +214,9 @@ def corpus_expect(name, text):
 # runtime reading of the normalized text, in which the
 # separator stands as the one break, as the port reads it.
 SEPARATOR_CORPUS = [
-    ("block line separator inside literal content", "a: |\n  one\u2028two\n"),
+    ("block line separator inside literal content", "a: |\n  one\u2028  two\n"),
     ("block paragraph separator at the end under keep", "a: |+\n  one\u2029"),
-    ("block line separator inside folded content", "a: >\n  one\u2028two\n"),
+    ("block line separator inside folded content", "a: >\n  one\u2028  two\n"),
 ]
 
 

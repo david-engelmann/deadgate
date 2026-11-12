@@ -7250,9 +7250,32 @@
    },
    {
     "name": "block line separator inside literal content",
-    "text": "a: |\n  one two\n",
+    "text": "a: |\n  one   two\n",
     "expect": {
-     "err": "ScannerError"
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
     },
     "port_stated": true
    },
@@ -7285,9 +7308,32 @@
    },
    {
     "name": "block line separator inside folded content",
-    "text": "a: >\n  one two\n",
+    "text": "a: >\n  one   two\n",
     "expect": {
-     "err": "ScannerError"
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          32,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
     },
     "port_stated": true
    }

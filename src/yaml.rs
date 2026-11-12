@@ -1326,8 +1326,7 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
         while let Some(found) = cursor.next_content(index) {
             let text = cursor.lines[found].text.clone();
             let column_zero = cursor.lines[found].indent == 0;
-            if column_zero && (text == "---" || text.starts_with("--- ") || text.starts_with('%'))
-            {
+            if column_zero && (text == "---" || text.starts_with("--- ") || text.starts_with('%')) {
                 return None;
             }
             if column_zero && (text == "..." || text.starts_with("... ")) {
@@ -1821,8 +1820,7 @@ fn sibling_or_end_shape(line: &Line, parent_indent: usize) -> bool {
     if line.indent == 0 && (line.text == "..." || line.text.starts_with("... ")) {
         return true;
     }
-    line.indent <= parent_indent
-        && (find_key_split(&line.text).is_some() || is_dash_line(line))
+    line.indent <= parent_indent && (find_key_split(&line.text).is_some() || is_dash_line(line))
 }
 
 /// Read a block scalar whose head stands in `text`, the lines
@@ -1830,11 +1828,7 @@ fn sibling_or_end_shape(line: &Line, parent_indent: usize) -> bool {
 /// position, under PORT3-1 to PORT3-5. The holding node's
 /// indent is `parent_indent`. On a reading the cursor stands
 /// on the first line that is not part of the scalar.
-fn parse_block_scalar(
-    text: &str,
-    cursor: &mut Cursor,
-    parent_indent: usize,
-) -> Option<YamlValue> {
+fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> Option<YamlValue> {
     let bytes = text.as_bytes();
     let folded = bytes[0] == b'>';
     let mut index = 1usize;
