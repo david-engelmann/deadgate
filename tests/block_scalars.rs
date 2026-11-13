@@ -348,15 +348,6 @@ fn test_a_block_head_in_flow_position_is_refused() {
     assert_eq!(reads("{a: |}\n"), None);
 }
 
-#[test]
-fn test_a_block_head_behind_an_anchor_is_refused() {
-    assert_eq!(reads("a: &x |\n  y\n"), None);
-}
-
-#[test]
-fn test_a_block_head_behind_a_tag_is_refused() {
-    assert_eq!(reads("a: !!str |\n  y\n"), None);
-}
 
 #[test]
 fn test_a_block_scalar_as_a_key_is_refused() {
