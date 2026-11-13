@@ -7,15 +7,22 @@
 //! and quoted scalars standing on one line, and it resolves
 //! plain scalars with the resolver of the runtime, the YAML 1.1
 //! spellings standing as the probe recorded them. The limits the
-//! contract states stand at the edges, anchors and aliases and
-//! merge keys and tags and document apparatus beyond one leading
-//! opener and one trailing closer refused, block scalars refused
-//! in flow position and read in block position, quoted scalars
-//! spanning lines refused, a mapping key that is a container
-//! refused, and nesting bounded at 4000. A scalar
+//! contract states stand at the edges, document apparatus
+//! beyond one leading opener and one trailing closer refused,
+//! block scalars refused in flow position and read in block
+//! position, quoted scalars spanning lines refused, a mapping
+//! key that is a container refused, and nesting bounded at
+//! 4000. Anchors and aliases and merge keys and tags stand
+//! read under the fourth slice inside its borders, properties
+//! standing in key position refused beyond the merge and
+//! non-specific tags, a tag outside the standing set refused,
+//! and alias and merge expansion bounded at 4000 across one
+//! document. A scalar
 //! the resolver reads as a date or a timestamp whose value does
 //! not stand refuses the document, as the Python command dies on
 //! it with an uncaught error.
+
+use std::collections::{HashMap, HashSet};
 
 use crate::dates::{civil_from_days, days_from_civil, valid_calendar_date};
 use crate::yamlvalue::{YamlKey, YamlValue};
@@ -869,6 +876,949 @@ fn insert_pair(pairs: &mut Vec<(YamlKey, YamlValue)>, key: YamlKey, value: YamlV
     }
 }
 
+// ----------------------------------------------------------------
+// Anchors, aliases, merge keys, and tags, PORT4
+// ----------------------------------------------------------------
+
+/// A tag standing on a node, as the expansion of its spelling
+/// under the standing bindings names it. The standard scalar
+/// and collection tags stand apart, the merge tag is a key's
+/// tag only, and every other expansion refuses.
+#[derive(Clone, PartialEq)]
+enum Tag {
+    None,
+    NonSpecific,
+    Str,
+    Int,
+    Float,
+    Bool,
+    Null,
+    Timestamp,
+    Seq,
+    Map,
+    Merge,
+    Refuse,
+}
+
+impl Tag {
+    fn is_constructor(&self) -> bool {
+        matches!(
+            self,
+            Tag::Str | Tag::Int | Tag::Float | Tag::Bool | Tag::Null | Tag::Timestamp
+        )
+    }
+}
+
+/// The properties standing in front of a node, at most one
+/// anchor and at most one tag in either order.
+#[derive(Clone)]
+struct Props {
+    anchor: Option<String>,
+    tag: Tag,
+}
+
+impl Props {
+    fn new() -> Props {
+        Props {
+            anchor: None,
+            tag: Tag::None,
+        }
+    }
+}
+
+/// A value the reader has built, carrying the tally of the
+/// expansion costs inside it, the tally of each item when it
+/// is a list, and the source text when it is a scalar node,
+/// so a tag standing outside the node's own lines can still
+/// convert it.
+#[derive(Clone)]
+struct Built {
+    value: YamlValue,
+    tally: usize,
+    items: Option<Vec<usize>>,
+    text: Option<String>,
+    plain_token: Option<String>,
+    tag_done: bool,
+}
+
+impl Built {
+    fn scalar(value: YamlValue) -> Built {
+        Built {
+            value,
+            tally: 0,
+            items: None,
+            text: None,
+            plain_token: None,
+            tag_done: false,
+        }
+    }
+
+    /// The empty scalar node, a null under plain resolution
+    /// whose text a tag can still convert.
+    fn empty_scalar() -> Built {
+        Built {
+            value: YamlValue::Null,
+            tally: 0,
+            items: None,
+            text: Some(String::new()),
+            plain_token: None,
+            tag_done: false,
+        }
+    }
+
+    fn from_text(text: String) -> Built {
+        Built {
+            value: YamlValue::Text(text.clone()),
+            tally: 0,
+            items: None,
+            text: Some(text),
+            plain_token: None,
+            tag_done: false,
+        }
+    }
+
+    fn converted(value: YamlValue) -> Built {
+        Built {
+            value,
+            tally: 0,
+            items: None,
+            text: None,
+            plain_token: None,
+            tag_done: true,
+        }
+    }
+
+    fn list(items: Vec<Built>) -> Built {
+        let tallies: Vec<usize> = items.iter().map(|item| item.tally).collect();
+        let tally = tallies.iter().sum();
+        Built {
+            value: YamlValue::List(items.into_iter().map(|item| item.value).collect()),
+            tally,
+            items: Some(tallies),
+            text: None,
+            plain_token: None,
+            tag_done: false,
+        }
+    }
+}
+
+/// A value bound under an anchor, with the tally the value
+/// cost to build, so a copy of it counts what the copy
+/// resolves inside it.
+#[derive(Clone)]
+struct AnchorVal {
+    value: YamlValue,
+    tally: usize,
+    items: Option<Vec<usize>>,
+}
+
+/// The expansion bound of PORT4, standing across one
+/// document.
+const EXPANSION_BOUND: usize = 4000;
+
+/// The state one document's reading carries, its tag
+/// bindings, its anchor table, the anchors whose nodes are
+/// still being built, and its expansion count.
+struct ReadState {
+    bindings: HashMap<String, String>,
+    bound: HashMap<String, AnchorVal>,
+    building: HashSet<String>,
+    expansions: usize,
+}
+
+impl ReadState {
+    /// Mark an anchor's node as under construction, refusing
+    /// a name that stands bound or building already.
+    fn mark(&mut self, name: &str) -> Option<()> {
+        if self.bound.contains_key(name) || self.building.contains(name) {
+            return None;
+        }
+        self.building.insert(name.to_string());
+        Some(())
+    }
+
+    fn bind(&mut self, name: &str, built: &Built) {
+        self.building.remove(name);
+        self.bound.insert(
+            name.to_string(),
+            AnchorVal {
+                value: built.value.clone(),
+                tally: built.tally,
+                items: built.items.clone(),
+            },
+        );
+    }
+
+    fn charge(&mut self, cost: usize) -> Option<()> {
+        self.expansions += cost;
+        if self.expansions > EXPANSION_BOUND {
+            None
+        } else {
+            Some(())
+        }
+    }
+
+    /// Read an alias as a copy of its anchored value,
+    /// charging the copy and what the copy resolves inside
+    /// it. An alias naming a node still under construction
+    /// is the recursive alias and refuses.
+    fn resolve_alias(&mut self, name: &str) -> Option<Built> {
+        if self.building.contains(name) {
+            return None;
+        }
+        let entry = self.bound.get(name)?.clone();
+        let cost = 1 + entry.tally;
+        self.charge(cost)?;
+        Some(Built {
+            value: entry.value,
+            tally: cost,
+            items: entry.items,
+            text: None,
+            plain_token: None,
+            tag_done: false,
+        })
+    }
+}
+
+/// Expand one merge source into the pairs a carrying mapping
+/// gathers ahead of its explicit pairs, charging the
+/// expansion and what the copying resolved inside the
+/// source as it was built.
+fn expand_merge_into(
+    state: &mut ReadState,
+    source: Built,
+    out: &mut Vec<(YamlKey, YamlValue)>,
+    tally: &mut usize,
+) -> Option<()> {
+    match source.value {
+        YamlValue::Mapping(pairs) => {
+            let cost = 1 + source.tally;
+            state.charge(cost)?;
+            *tally += cost;
+            out.extend(pairs);
+            Some(())
+        }
+        YamlValue::List(items) => {
+            let tallies = source.items?;
+            if tallies.len() != items.len() {
+                return None;
+            }
+            let mut sources: Vec<Vec<(YamlKey, YamlValue)>> = Vec::new();
+            for (item, item_tally) in items.into_iter().zip(tallies.iter()) {
+                match item {
+                    YamlValue::Mapping(pairs) => {
+                        let cost = 1 + item_tally;
+                        state.charge(cost)?;
+                        *tally += cost;
+                        sources.push(pairs);
+                    }
+                    _ => return None,
+                }
+            }
+            // The pairs of a list of sources stand in the
+            // reverse of the list's order, the earlier listed
+            // source winning the repeated keys by standing in
+            // front of them.
+            for pairs in sources.into_iter().rev() {
+                out.extend(pairs);
+            }
+            Some(())
+        }
+        _ => None,
+    }
+}
+
+/// Gather the pairs of a mapping from its merge sources and
+/// its explicit pairs, the merged pairs standing in front of
+/// every explicit pair wherever the merge key was written.
+fn flatten_mapping(
+    state: &mut ReadState,
+    merge_sources: Vec<Built>,
+    explicit: Vec<(YamlKey, Built)>,
+) -> Option<Built> {
+    let mut merged: Vec<(YamlKey, YamlValue)> = Vec::new();
+    let mut tally = 0usize;
+    for source in merge_sources {
+        expand_merge_into(state, source, &mut merged, &mut tally)?;
+    }
+    let mut pairs: Vec<(YamlKey, YamlValue)> = Vec::new();
+    for (key, value) in merged {
+        insert_pair(&mut pairs, key, value);
+    }
+    for (key, built) in explicit {
+        tally += built.tally;
+        insert_pair(&mut pairs, key, built.value);
+    }
+    Some(Built {
+        value: YamlValue::Mapping(pairs),
+        tally,
+        items: None,
+        text: None,
+        plain_token: None,
+        tag_done: false,
+    })
+}
+
+fn is_anchor_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+}
+
+fn is_anchor_char_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'
+}
+
+fn classify_tag(full: &str) -> Tag {
+    match full {
+        "tag:yaml.org,2002:str" => Tag::Str,
+        "tag:yaml.org,2002:int" => Tag::Int,
+        "tag:yaml.org,2002:float" => Tag::Float,
+        "tag:yaml.org,2002:bool" => Tag::Bool,
+        "tag:yaml.org,2002:null" => Tag::Null,
+        "tag:yaml.org,2002:timestamp" => Tag::Timestamp,
+        "tag:yaml.org,2002:seq" => Tag::Seq,
+        "tag:yaml.org,2002:map" => Tag::Map,
+        "tag:yaml.org,2002:merge" => Tag::Merge,
+        _ => Tag::Refuse,
+    }
+}
+
+/// Resolve a tag token spelling to the tag it names under
+/// the standing bindings, refusing a handle no directive
+/// bound.
+fn resolve_tag_spelling(token: &str, bindings: &HashMap<String, String>) -> Option<Tag> {
+    if token == "!" {
+        return Some(Tag::NonSpecific);
+    }
+    let (handle, suffix) = if let Some(rest) = token.strip_prefix("!!") {
+        ("!!", rest)
+    } else if let Some(index) = token[1..].find('!') {
+        (&token[..index + 2], &token[index + 2..])
+    } else {
+        ("!", &token[1..])
+    };
+    let prefix = bindings.get(handle)?;
+    Some(classify_tag(&format!("{prefix}{suffix}")))
+}
+
+/// Read the tag token standing at the head of `text` from
+/// byte `pos`, handing back the tag and the byte just past
+/// the token. A verbatim spelling names its tag inside angle
+/// brackets, and an empty verbatim spelling refuses.
+fn read_tag_token(
+    text: &str,
+    pos: usize,
+    bindings: &HashMap<String, String>,
+) -> Option<(Tag, usize)> {
+    let bytes = text.as_bytes();
+    if bytes.get(pos + 1) == Some(&b'<') {
+        let mut end = pos + 2;
+        while end < bytes.len() && bytes[end] != b'>' {
+            end += 1;
+        }
+        if end >= bytes.len() {
+            return None;
+        }
+        let full = &text[pos + 2..end];
+        if full.is_empty() {
+            return None;
+        }
+        let after = end + 1;
+        match bytes.get(after) {
+            None | Some(b' ') => Some((classify_tag(full), after)),
+            _ => None,
+        }
+    } else {
+        let mut end = pos;
+        while end < bytes.len() && bytes[end] != b' ' && bytes[end] != b'\t' {
+            end += 1;
+        }
+        let tag = resolve_tag_spelling(&text[pos..end], bindings)?;
+        Some((tag, end))
+    }
+}
+
+enum PropSplit {
+    None,
+    Props(Props, usize),
+    Refuse,
+}
+
+/// Split the properties standing at the head of a node text
+/// in block position, at most one anchor and at most one tag
+/// in either order. The byte handed back stands at the
+/// node's own text.
+fn split_properties(text: &str, bindings: &HashMap<String, String>) -> PropSplit {
+    let bytes = text.as_bytes();
+    if !matches!(bytes.first(), Some(b'&') | Some(b'!')) {
+        return PropSplit::None;
+    }
+    let mut props = Props::new();
+    let mut pos = 0usize;
+    loop {
+        match bytes[pos] {
+            b'&' => {
+                if props.anchor.is_some() {
+                    return PropSplit::Refuse;
+                }
+                let start = pos + 1;
+                let mut end = start;
+                while end < bytes.len() && is_anchor_char(bytes[end]) {
+                    end += 1;
+                }
+                if end == start {
+                    return PropSplit::Refuse;
+                }
+                match bytes.get(end) {
+                    None | Some(b' ') => {}
+                    _ => return PropSplit::Refuse,
+                }
+                props.anchor = Some(text[start..end].to_string());
+                pos = end;
+            }
+            b'!' => {
+                if props.tag != Tag::None {
+                    return PropSplit::Refuse;
+                }
+                match read_tag_token(text, pos, bindings) {
+                    Some((tag, end)) => {
+                        props.tag = tag;
+                        pos = end;
+                    }
+                    None => return PropSplit::Refuse,
+                }
+            }
+            _ => return PropSplit::Refuse,
+        }
+        let mut next = pos;
+        while bytes.get(next) == Some(&b' ') {
+            next += 1;
+        }
+        if matches!(bytes.get(next), Some(b'&') | Some(b'!')) {
+            pos = next;
+            continue;
+        }
+        return PropSplit::Props(props, next);
+    }
+}
+
+/// The standing a tag has in key position, where the merge
+/// tag merges and the non-specific tag reads as the plain
+/// key reads, every other tag refusing.
+#[derive(Clone, Copy, PartialEq)]
+enum KeyTag {
+    None,
+    NonSpecific,
+    Merge,
+    Refuse,
+}
+
+struct KeyProps {
+    anchor: Option<String>,
+    tag: KeyTag,
+}
+
+enum KeySplit {
+    None,
+    Props(KeyProps, usize),
+    Refuse,
+}
+
+/// Split the properties standing at the head of a key text in
+/// block position, the tag classes of key position riding on
+/// the split.
+fn split_key_properties(text: &str, bindings: &HashMap<String, String>) -> KeySplit {
+    match split_properties(text, bindings) {
+        PropSplit::None => KeySplit::None,
+        PropSplit::Refuse => KeySplit::Refuse,
+        PropSplit::Props(props, offset) => {
+            let tag = match props.tag {
+                Tag::None => KeyTag::None,
+                Tag::NonSpecific => KeyTag::NonSpecific,
+                Tag::Merge => KeyTag::Merge,
+                _ => KeyTag::Refuse,
+            };
+            KeySplit::Props(
+                KeyProps {
+                    anchor: props.anchor,
+                    tag,
+                },
+                offset,
+            )
+        }
+    }
+}
+
+/// Whether a line's text carries a mapping key, a property
+/// standing in front of the key counted as standing in front
+/// of the key.
+fn mapping_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
+    match split_key_properties(text, bindings) {
+        KeySplit::Props(_, offset) => find_key_split(&text[offset..]).is_some(),
+        KeySplit::None => find_key_split(text).is_some(),
+        KeySplit::Refuse => false,
+    }
+}
+
+/// A decimal integer in text form, a sign and the digits
+/// without their leading zeros, as Python's int carries one.
+struct DecInt {
+    negative: bool,
+    digits: String,
+}
+
+fn dec_normalize(digits: &str) -> String {
+    let trimmed = digits.trim_start_matches('0');
+    if trimmed.is_empty() {
+        "0".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Read a decimal integer the way Python's int reads its
+/// text, the whitespace at its ends stripped and a sign
+/// standing in front.
+fn dec_parse(text: &str) -> Option<DecInt> {
+    let trimmed = text.trim();
+    let (negative, body) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    if body.is_empty() || !body.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some(DecInt {
+        negative,
+        digits: dec_normalize(body),
+    })
+}
+
+fn dec_magnitude_add(a: &str, b: &str) -> String {
+    let a: Vec<u32> = a.bytes().map(|byte| (byte - b'0') as u32).collect();
+    let b: Vec<u32> = b.bytes().map(|byte| (byte - b'0') as u32).collect();
+    let mut out: Vec<u32> = Vec::new();
+    let mut carry = 0u32;
+    let mut index = 0usize;
+    while index < a.len() || index < b.len() || carry > 0 {
+        let mut sum = carry;
+        if index < a.len() {
+            sum += a[a.len() - 1 - index];
+        }
+        if index < b.len() {
+            sum += b[b.len() - 1 - index];
+        }
+        out.push(sum % 10);
+        carry = sum / 10;
+        index += 1;
+    }
+    let text: String = out
+        .iter()
+        .rev()
+        .map(|digit| (b'0' + *digit as u8) as char)
+        .collect();
+    dec_normalize(&text)
+}
+
+fn dec_magnitude_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let a = dec_normalize(a);
+    let b = dec_normalize(b);
+    a.len().cmp(&b.len()).then_with(|| a.cmp(&b))
+}
+
+/// Subtract the smaller magnitude from the larger, the
+/// caller holding the order.
+fn dec_magnitude_sub(a: &str, b: &str) -> String {
+    let a: Vec<i32> = a.bytes().map(|byte| (byte - b'0') as i32).collect();
+    let b: Vec<i32> = b.bytes().map(|byte| (byte - b'0') as i32).collect();
+    let mut out: Vec<i32> = Vec::new();
+    let mut borrow = 0i32;
+    let mut index = 0usize;
+    while index < a.len() {
+        let mut digit = a[a.len() - 1 - index] - borrow;
+        if index < b.len() {
+            digit -= b[b.len() - 1 - index];
+        }
+        if digit < 0 {
+            digit += 10;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        out.push(digit);
+        index += 1;
+    }
+    let text: String = out
+        .iter()
+        .rev()
+        .map(|digit| (b'0' + *digit as u8) as char)
+        .collect();
+    dec_normalize(&text)
+}
+
+fn dec_add(a: DecInt, b: DecInt) -> DecInt {
+    if a.digits == "0" {
+        return b;
+    }
+    if b.digits == "0" {
+        return a;
+    }
+    if a.negative == b.negative {
+        DecInt {
+            negative: a.negative,
+            digits: dec_magnitude_add(&a.digits, &b.digits),
+        }
+    } else {
+        match dec_magnitude_cmp(&a.digits, &b.digits) {
+            std::cmp::Ordering::Greater => DecInt {
+                negative: a.negative,
+                digits: dec_magnitude_sub(&a.digits, &b.digits),
+            },
+            std::cmp::Ordering::Less => DecInt {
+                negative: b.negative,
+                digits: dec_magnitude_sub(&b.digits, &a.digits),
+            },
+            std::cmp::Ordering::Equal => DecInt {
+                negative: false,
+                digits: "0".to_string(),
+            },
+        }
+    }
+}
+
+fn dec_mul_small(a: DecInt, factor: u32) -> DecInt {
+    if a.digits == "0" || factor == 0 {
+        return DecInt {
+            negative: false,
+            digits: "0".to_string(),
+        };
+    }
+    let digits: Vec<u32> = a.digits.bytes().map(|byte| (byte - b'0') as u32).collect();
+    let mut out: Vec<u32> = Vec::new();
+    let mut carry = 0u32;
+    for digit in digits.iter().rev() {
+        let current = digit * factor + carry;
+        out.push(current % 10);
+        carry = current / 10;
+    }
+    while carry > 0 {
+        out.push(carry % 10);
+        carry /= 10;
+    }
+    DecInt {
+        negative: a.negative,
+        digits: out
+            .iter()
+            .rev()
+            .map(|digit| (b'0' + *digit as u8) as char)
+            .collect(),
+    }
+}
+
+fn dec_value(value: DecInt) -> YamlValue {
+    if value.negative && value.digits != "0" {
+        integer_value(format!("-{}", value.digits))
+    } else {
+        integer_value(value.digits)
+    }
+}
+
+/// Read an integer written in a base the way Python's int
+/// reads one in that base, the whitespace at its ends
+/// stripped, a sign standing in front, and the prefix the
+/// base carries let stand or fall as the base reads it.
+fn dec_parse_base(text: &str, base: u32) -> Option<DecInt> {
+    let trimmed = text.trim();
+    let (negative, body) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let body = match base {
+        2 => body
+            .strip_prefix("0b")
+            .or_else(|| body.strip_prefix("0B"))
+            .unwrap_or(body),
+        8 => body
+            .strip_prefix("0o")
+            .or_else(|| body.strip_prefix("0O"))
+            .unwrap_or(body),
+        _ => body
+            .strip_prefix("0x")
+            .or_else(|| body.strip_prefix("0X"))
+            .unwrap_or(body),
+    };
+    let valid: fn(char) -> bool = match base {
+        2 => |ch: char| ch == '0' || ch == '1',
+        8 => |ch: char| ('0'..='7').contains(&ch),
+        _ => |ch: char| ch.is_ascii_hexdigit(),
+    };
+    let digits = digits_of(body, valid)?;
+    Some(DecInt {
+        negative,
+        digits: bigint_from_digits(&digits, base, false),
+    })
+}
+
+/// Convert a scalar text under the int tag, mirroring the
+/// constructor of the runtime in its own order of readings,
+/// the binary and hex spellings in front of the leading zero
+/// octal reading and the sexagesimal reading behind it. The
+/// tagged grammar stands beside the plain grammar, and its
+/// sexagesimal parts stand at any size.
+fn convert_int(text: &str) -> Option<YamlValue> {
+    let value: String = text.chars().filter(|ch| *ch != '_').collect();
+    let first = value.chars().next()?;
+    let (negative, rest) = match first {
+        '-' => (true, &value[1..]),
+        '+' => (false, &value[1..]),
+        _ => (false, value.as_str()),
+    };
+    let parsed = if rest == "0" {
+        DecInt {
+            negative: false,
+            digits: "0".to_string(),
+        }
+    } else if rest.starts_with("0b") {
+        dec_parse_base(rest, 2)?
+    } else if rest.starts_with("0x") {
+        dec_parse_base(rest, 16)?
+    } else if rest.starts_with('0') {
+        dec_parse_base(rest, 8)?
+    } else if rest.contains(':') {
+        let mut total = DecInt {
+            negative: false,
+            digits: "0".to_string(),
+        };
+        for part in rest.split(':') {
+            let part = dec_parse(part)?;
+            total = dec_add(dec_mul_small(total, 60), part);
+        }
+        total
+    } else {
+        dec_parse(rest)?
+    };
+    Some(dec_value(DecInt {
+        negative: negative != parsed.negative && parsed.digits != "0",
+        digits: parsed.digits,
+    }))
+}
+
+/// The shape of a decimal float spelling, digits with one
+/// point at most and an exponent with digits of its own.
+fn python_float_shape(body: &str) -> bool {
+    let bytes = body.as_bytes();
+    let mut index = 0usize;
+    let mut mantissa = 0usize;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+        index += 1;
+        mantissa += 1;
+    }
+    if index < bytes.len() && bytes[index] == b'.' {
+        index += 1;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+            mantissa += 1;
+        }
+    }
+    if mantissa == 0 {
+        return false;
+    }
+    if index < bytes.len() && (bytes[index] == b'e' || bytes[index] == b'E') {
+        index += 1;
+        if index < bytes.len() && (bytes[index] == b'+' || bytes[index] == b'-') {
+            index += 1;
+        }
+        let mut exponent = 0usize;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+            exponent += 1;
+        }
+        if exponent == 0 {
+            return false;
+        }
+    }
+    index == bytes.len()
+}
+
+/// Read a float the way Python's float reads its text, the
+/// whitespace at its ends stripped and the infinity and not
+/// a number spellings standing as words.
+fn python_float(text: &str) -> Option<f64> {
+    let trimmed = text.trim();
+    let (negative, body) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let value = match body {
+        "inf" | "infinity" => f64::INFINITY,
+        "nan" => f64::NAN,
+        _ => {
+            if !python_float_shape(body) {
+                return None;
+            }
+            body.parse::<f64>().ok()?
+        }
+    };
+    Some(if negative { -value } else { value })
+}
+
+/// Convert a scalar text under the float tag, mirroring the
+/// constructor of the runtime, its sexagesimal form summing
+/// in the constructor's own reversed order so the rounding
+/// stands where the runtime's rounding stands.
+fn convert_float(text: &str) -> Option<YamlValue> {
+    let value: String = text
+        .chars()
+        .filter(|ch| *ch != '_')
+        .collect::<String>()
+        .to_lowercase();
+    let first = value.chars().next()?;
+    let (negative, rest) = match first {
+        '-' => (true, &value[1..]),
+        '+' => (false, &value[1..]),
+        _ => (false, value.as_str()),
+    };
+    let parsed = if rest == ".inf" {
+        f64::INFINITY
+    } else if rest == ".nan" {
+        f64::NAN
+    } else if rest.contains(':') {
+        let mut parts: Vec<f64> = Vec::new();
+        for part in rest.split(':') {
+            parts.push(python_float(part)?);
+        }
+        let mut total = 0.0f64;
+        let mut base = 1.0f64;
+        for part in parts.iter().rev() {
+            total += part * base;
+            base *= 60.0;
+        }
+        total
+    } else {
+        python_float(rest)?
+    };
+    Some(YamlValue::Float(if negative { -parsed } else { parsed }))
+}
+
+/// Convert a scalar text under the timestamp tag. The tag
+/// grammar takes the month and day fields at one or two
+/// digits in the date alone form, where the plain grammar
+/// asks two, and stands beside the plain grammar otherwise.
+fn convert_timestamp(text: &str) -> Option<YamlValue> {
+    if let Some(value) = read_date_only_flexible(text) {
+        return Some(value);
+    }
+    match read_timestamp(text) {
+        TimestampRead::Date(days) => Some(YamlValue::Date(days)),
+        TimestampRead::Naive(micros) => Some(YamlValue::NaiveDateTime(micros)),
+        TimestampRead::Aware(micros, offset) => Some(YamlValue::AwareDateTime(micros, offset)),
+        _ => None,
+    }
+}
+
+/// The date alone form under the timestamp tag, its month
+/// and day fields standing at one or two digits.
+fn read_date_only_flexible(text: &str) -> Option<YamlValue> {
+    let bytes = text.as_bytes();
+    let mut index = 0usize;
+    let mut fields: Vec<i64> = Vec::new();
+    for field in 0..3 {
+        let max = if field == 0 { 4 } else { 2 };
+        let mut value: i64 = 0;
+        let mut count = 0usize;
+        while index < bytes.len() && bytes[index].is_ascii_digit() && count < max {
+            value = value * 10 + (bytes[index] - b'0') as i64;
+            index += 1;
+            count += 1;
+        }
+        if count == 0 || (field == 0 && count != 4) {
+            return None;
+        }
+        fields.push(value);
+        if field < 2 {
+            if bytes.get(index) != Some(&b'-') {
+                return None;
+            }
+            index += 1;
+        }
+    }
+    if index != bytes.len() {
+        return None;
+    }
+    let (year, month, day) = (fields[0], fields[1], fields[2]);
+    if !(1..=9999).contains(&year) || !valid_calendar_date(year, month, day) {
+        return None;
+    }
+    Some(YamlValue::Date(days_from_civil(year, month, day)))
+}
+
+/// Convert a scalar text under a scalar tag, the constructor
+/// of the runtime standing in place of plain resolution. A
+/// conversion the constructor cannot make refuses.
+fn convert_tagged_scalar(tag: &Tag, text: &str) -> Option<YamlValue> {
+    match tag {
+        Tag::Str => Some(YamlValue::Text(text.to_string())),
+        Tag::Int => convert_int(text),
+        Tag::Float => convert_float(text),
+        Tag::Bool => match text.to_lowercase().as_str() {
+            "yes" | "true" | "on" => Some(YamlValue::Bool(true)),
+            "no" | "false" | "off" => Some(YamlValue::Bool(false)),
+            _ => None,
+        },
+        Tag::Null => Some(YamlValue::Null),
+        Tag::Timestamp => convert_timestamp(text),
+        _ => None,
+    }
+}
+
+/// Apply a node's tag to its built value, a scalar tag
+/// converting the scalar text and a collection tag standing
+/// only on a collection of its own kind.
+fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
+    match tag {
+        Tag::None | Tag::NonSpecific => Some(built),
+        Tag::Seq => {
+            if matches!(built.value, YamlValue::List(_)) {
+                Some(built)
+            } else {
+                None
+            }
+        }
+        Tag::Map => {
+            if matches!(built.value, YamlValue::Mapping(_)) {
+                Some(built)
+            } else {
+                None
+            }
+        }
+        _ if tag.is_constructor() => {
+            if built.tag_done {
+                return Some(built);
+            }
+            let text = built.text.clone()?;
+            let value = convert_tagged_scalar(tag, &text)?;
+            Some(Built {
+                value,
+                tally: built.tally,
+                items: None,
+                text: None,
+                plain_token: None,
+                tag_done: true,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Settle a node's properties on its built value, the tag
+/// applied and the anchor bound to what the node reads as.
+fn finish_props(state: &mut ReadState, props: Props, built: Built) -> Option<Built> {
+    let built = apply_tag(&props.tag, built)?;
+    if let Some(name) = &props.anchor {
+        state.bind(name, &built);
+    }
+    Some(built)
+}
+
 /// The char spans of the lines standing inside block scalar
 /// content, as a pre-scan over the text finds them, so the tab
 /// standing can exempt the tabs that stand inside block
@@ -966,8 +1916,40 @@ fn block_content_spans(text: &str) -> Vec<(usize, usize)> {
                         // line's indent, and a head standing
                         // alone at the root takes 0.
                         let prefix: String = chars[start..index].iter().collect();
-                        let trimmed = prefix.trim_end();
-                        let parent = if trimmed.is_empty() {
+                        let mut trimmed = prefix.trim_end().to_string();
+                        // Properties standing behind the head
+                        // are cut from the prefix, a head
+                        // standing behind a property standing
+                        // as a head under PORT4-8.
+                        loop {
+                            let cut = match trimmed.rfind(' ') {
+                                Some(space) => {
+                                    let token = &trimmed[space + 1..];
+                                    if token.starts_with('&') || token.starts_with('!') {
+                                        Some(space)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                None => {
+                                    if trimmed.starts_with('&') || trimmed.starts_with('!') {
+                                        Some(0)
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
+                            match cut {
+                                Some(at) => {
+                                    trimmed.truncate(at);
+                                    let standing = trimmed.trim_end().to_string();
+                                    trimmed = standing;
+                                }
+                                None => break,
+                            }
+                        }
+                        let trimmed = trimmed.as_str();
+                        let parent = if trimmed.is_empty() || trimmed == "---" {
                             0
                         } else if trimmed == "-" || trimmed.ends_with(" -") {
                             space_indent(li)
@@ -1164,7 +2146,11 @@ fn tab_refused(text: &str) -> bool {
 /// directive stands as it stands and is passed over. A comment
 /// may close the line, and a tab in the directive itself
 /// refuses it.
-fn directive_stands(text: &str, version_seen: &mut bool, tag_handles: &mut Vec<String>) -> bool {
+fn directive_stands(
+    text: &str,
+    version_seen: &mut bool,
+    tag_handles: &mut Vec<(String, String)>,
+) -> bool {
     let head = match text.find(" #") {
         Some(index) => &text[..index],
         None => text,
@@ -1206,10 +2192,10 @@ fn directive_stands(text: &str, version_seen: &mut bool, tag_handles: &mut Vec<S
             if args.len() != 2 || !args[0].starts_with('!') {
                 return false;
             }
-            if tag_handles.iter().any(|standing| standing == args[0]) {
+            if tag_handles.iter().any(|(standing, _)| standing == args[0]) {
                 return false;
             }
-            tag_handles.push(args[0].to_string());
+            tag_handles.push((args[0].to_string(), args[1].to_string()));
             true
         }
         _ => true,
@@ -1308,7 +2294,7 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     let mut directives = 0usize;
     let mut opener_seen = false;
     let mut version_seen = false;
-    let mut tag_handles: Vec<String> = Vec::new();
+    let mut tag_handles: Vec<(String, String)> = Vec::new();
     loop {
         let text = cursor.lines[start].text.clone();
         if text.starts_with('%') {
@@ -1370,14 +2356,31 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     if cursor.peek_content().is_none() {
         return Some(YamlValue::Null);
     }
-    let value = parse_block(&mut cursor, 0, 0)?;
+    let mut bindings: HashMap<String, String> = HashMap::new();
+    bindings.insert("!".to_string(), "!".to_string());
+    bindings.insert("!!".to_string(), "tag:yaml.org,2002:".to_string());
+    for (handle, prefix) in &tag_handles {
+        bindings.insert(handle.clone(), prefix.clone());
+    }
+    let mut state = ReadState {
+        bindings,
+        bound: HashMap::new(),
+        building: HashSet::new(),
+        expansions: 0,
+    };
+    let value = parse_block(&mut cursor, 0, 0, &mut state)?.value;
     if cursor.peek_content().is_some() {
         return None;
     }
     Some(value)
 }
 
-fn parse_block(cursor: &mut Cursor, parent_indent: usize, depth: usize) -> Option<YamlValue> {
+fn parse_block(
+    cursor: &mut Cursor,
+    parent_indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
     if depth > MAX_YAML_NESTING {
         return None;
     }
@@ -1386,18 +2389,94 @@ fn parse_block(cursor: &mut Cursor, parent_indent: usize, depth: usize) -> Optio
     if line.text.starts_with('\t') {
         return None;
     }
+    match split_properties(&line.text, &state.bindings) {
+        PropSplit::Refuse => return None,
+        PropSplit::Props(props, offset) => {
+            let rest = &line.text[offset..];
+            if rest.is_empty() || rest.starts_with('#') {
+                // Properties standing alone on the node's line
+                // bind the block standing on the following
+                // lines, or the empty scalar when no block
+                // stands behind them.
+                cursor.pos = li + 1;
+                if let Some(name) = &props.anchor {
+                    state.mark(name)?;
+                }
+                let built = read_following_block(cursor, &line, parent_indent, depth, state)?;
+                return finish_props(state, props, built);
+            }
+        }
+        PropSplit::None => {}
+    }
     if is_dash_line(&line) {
-        parse_sequence(cursor, line.indent, depth)
-    } else if find_key_split(&line.text).is_some() {
-        parse_mapping(cursor, line.indent, depth)
+        parse_sequence(cursor, line.indent, depth, state)
+    } else if mapping_shape(&line.text, &state.bindings) {
+        parse_mapping(cursor, line.indent, depth, state)
     } else {
         cursor.pos = li + 1;
-        parse_inline_value(&line.text, cursor, line.indent, parent_indent, depth)
+        parse_inline_value(&line.text, cursor, line.indent, parent_indent, depth, state)
     }
 }
 
-fn parse_mapping(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<YamlValue> {
-    let mut pairs: Vec<(YamlKey, YamlValue)> = Vec::new();
+/// Read the node standing on the lines behind a line that
+/// carried properties alone, a dash standing at the line's
+/// own indent opening its sequence and a block standing at
+/// or deeper than the line's indent opening under the
+/// parent, the empty scalar standing when no node stands
+/// behind.
+fn read_following_block(
+    cursor: &mut Cursor,
+    line: &Line,
+    parent_indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
+    let Some(nj) = cursor.peek_content() else {
+        return Some(Built::empty_scalar());
+    };
+    let next = cursor.lines[nj].clone();
+    if next.indent == line.indent && is_dash_line(&next) {
+        parse_sequence(cursor, next.indent, depth + 1, state)
+    } else if next.indent >= line.indent || next.indent > parent_indent {
+        parse_block(cursor, parent_indent, depth + 1, state)
+    } else {
+        Some(Built::empty_scalar())
+    }
+}
+
+/// Read a mapping value standing on the lines behind its key
+/// line, the block standing deeper or a sequence standing at
+/// the key's own indent, the empty scalar standing when no
+/// value stands behind.
+fn following_block_value(
+    cursor: &mut Cursor,
+    indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
+    match cursor.peek_content() {
+        None => Some(Built::empty_scalar()),
+        Some(nj) => {
+            let next = cursor.lines[nj].clone();
+            if next.indent > indent {
+                parse_block(cursor, indent, depth + 1, state)
+            } else if next.indent == indent && is_dash_line(&next) {
+                parse_sequence(cursor, indent, depth + 1, state)
+            } else {
+                Some(Built::empty_scalar())
+            }
+        }
+    }
+}
+
+fn parse_mapping(
+    cursor: &mut Cursor,
+    indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
+    let mut explicit: Vec<(YamlKey, Built)> = Vec::new();
+    let mut merge_sources: Vec<Built> = Vec::new();
     loop {
         let Some(li) = cursor.peek_content() else {
             break;
@@ -1415,35 +2494,91 @@ fn parse_mapping(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Yam
         if is_dash_line(&line) {
             break;
         }
-        let (key_raw, rest_start) = find_key_split(&line.text)?;
+        // A property standing in front of the key stands at
+        // the node's own start only on the mapping's first
+        // pair, and what it can do there is bind the first
+        // key under its anchor and carry the tags key
+        // position allows. On any later pair the properties
+        // stand in key position and refuse beyond those tags.
+        let (key_props, key_offset) = match split_key_properties(&line.text, &state.bindings) {
+            KeySplit::Refuse => return None,
+            KeySplit::None => (
+                KeyProps {
+                    anchor: None,
+                    tag: KeyTag::None,
+                },
+                0,
+            ),
+            KeySplit::Props(props, offset) => (props, offset),
+        };
+        if key_props.tag == KeyTag::Refuse {
+            return None;
+        }
+        let first_pair = explicit.is_empty() && merge_sources.is_empty();
+        if key_props.anchor.is_some() && !first_pair {
+            return None;
+        }
+        let (key_raw, rest_start) = find_key_split(&line.text[key_offset..])?;
+        let rest_start = key_offset + rest_start;
         let key_value = parse_key_scalar(&key_raw)?;
+        if let Some(name) = &key_props.anchor {
+            // The anchor standing in front of a block mapping
+            // binds the first key scalar of the mapping, not
+            // the mapping itself, and a name bound anywhere in
+            // the document refuses a second binding.
+            if state.bound.contains_key(name) || state.building.contains(name) {
+                return None;
+            }
+            state.bound.insert(
+                name.clone(),
+                AnchorVal {
+                    value: key_value.clone(),
+                    tally: 0,
+                    items: None,
+                },
+            );
+        }
         let key = YamlKey::of(&key_value)?;
+        let merge_key = key_props.tag == KeyTag::Merge
+            || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific) && key_raw == "<<");
         let rest = line.text[rest_start..].trim_start().to_string();
         cursor.pos = li + 1;
         let value = if rest.is_empty() || rest.starts_with('#') {
-            match cursor.peek_content() {
-                None => YamlValue::Null,
-                Some(nj) => {
-                    let next = cursor.lines[nj].clone();
-                    if next.indent > indent {
-                        parse_block(cursor, indent, depth + 1)?
-                    } else if next.indent == indent && is_dash_line(&next) {
-                        parse_sequence(cursor, indent, depth + 1)?
-                    } else {
-                        YamlValue::Null
-                    }
-                }
-            }
+            following_block_value(cursor, indent, depth, state)?
         } else {
-            parse_inline_value(&rest, cursor, indent, indent, depth + 1)?
+            match split_properties(&rest, &state.bindings) {
+                PropSplit::Refuse => return None,
+                PropSplit::Props(props, offset)
+                    if rest[offset..].is_empty() || rest[offset..].starts_with('#') =>
+                {
+                    // Properties standing alone at the end of
+                    // the key line bind the value standing on
+                    // the following lines.
+                    if let Some(name) = &props.anchor {
+                        state.mark(name)?;
+                    }
+                    let built = following_block_value(cursor, indent, depth, state)?;
+                    finish_props(state, props, built)?
+                }
+                _ => parse_inline_value(&rest, cursor, indent, indent, depth + 1, state)?,
+            }
         };
-        insert_pair(&mut pairs, key, value);
+        if merge_key {
+            merge_sources.push(value);
+        } else {
+            explicit.push((key, value));
+        }
     }
-    Some(YamlValue::Mapping(pairs))
+    flatten_mapping(state, merge_sources, explicit)
 }
 
-fn parse_sequence(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<YamlValue> {
-    let mut items = Vec::new();
+fn parse_sequence(
+    cursor: &mut Cursor,
+    indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
+    let mut items: Vec<Built> = Vec::new();
     loop {
         let Some(li) = cursor.peek_content() else {
             break;
@@ -1463,22 +2598,51 @@ fn parse_sequence(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Ya
         if content.is_empty() || content.starts_with('#') {
             cursor.pos = li + 1;
             let value = match cursor.peek_content() {
-                None => YamlValue::Null,
+                None => Built::scalar(YamlValue::Null),
                 Some(nj) => {
                     let next = cursor.lines[nj].clone();
                     if next.indent > indent {
-                        parse_block(cursor, indent, depth + 1)?
+                        parse_block(cursor, indent, depth + 1, state)?
                     } else {
-                        YamlValue::Null
+                        Built::scalar(YamlValue::Null)
                     }
                 }
             };
             items.push(value);
             continue;
         }
+        // Properties standing alone on the dash line bind the
+        // whole entry the block standing on the following
+        // lines reads as, or the empty scalar when no block
+        // stands behind them.
+        match split_properties(&content, &state.bindings) {
+            PropSplit::Refuse => return None,
+            PropSplit::Props(props, offset)
+                if content[offset..].is_empty() || content[offset..].starts_with('#') =>
+            {
+                cursor.pos = li + 1;
+                if let Some(name) = &props.anchor {
+                    state.mark(name)?;
+                }
+                let built = match cursor.peek_content() {
+                    None => Built::empty_scalar(),
+                    Some(nj) => {
+                        let next = cursor.lines[nj].clone();
+                        if next.indent > indent {
+                            parse_block(cursor, indent, depth + 1, state)?
+                        } else {
+                            Built::empty_scalar()
+                        }
+                    }
+                };
+                items.push(finish_props(state, props, built)?);
+                continue;
+            }
+            _ => {}
+        }
         let lead = after.len() - after.trim_start().len();
         let virtual_indent = indent + 1 + lead;
-        if is_dash_text(&content) || find_key_split(&content).is_some() {
+        if is_dash_text(&content) || mapping_shape(&content, &state.bindings) {
             let standing_break = line.has_break;
             cursor.lines[li] = Line {
                 indent: virtual_indent,
@@ -1487,15 +2651,15 @@ fn parse_sequence(cursor: &mut Cursor, indent: usize, depth: usize) -> Option<Ya
                 has_break: standing_break,
             };
             cursor.pos = li;
-            let value = parse_block(cursor, indent, depth + 1)?;
+            let value = parse_block(cursor, indent, depth + 1, state)?;
             items.push(value);
         } else {
             cursor.pos = li + 1;
-            let value = parse_inline_value(&content, cursor, indent, indent, depth + 1)?;
+            let value = parse_inline_value(&content, cursor, indent, indent, depth + 1, state)?;
             items.push(value);
         }
     }
-    Some(YamlValue::List(items))
+    Some(Built::list(items))
 }
 
 /// Find where a mapping key ends on a line, as the byte index
@@ -1704,10 +2868,98 @@ fn parse_inline_value(
     block_indent: usize,
     parent_indent: usize,
     depth: usize,
-) -> Option<YamlValue> {
+    state: &mut ReadState,
+) -> Option<Built> {
+    if matches!(text.as_bytes().first(), Some(b'&') | Some(b'!')) {
+        match split_properties(text, &state.bindings) {
+            PropSplit::Refuse => return None,
+            PropSplit::Props(props, offset) => {
+                let rest = &text[offset..];
+                if rest.starts_with('*') {
+                    // A property standing in front of an alias
+                    // refuses, as the runtime reading refuses
+                    // it in its own parser.
+                    return None;
+                }
+                if let Some(name) = &props.anchor {
+                    state.mark(name)?;
+                }
+                let built = if rest.is_empty() || rest.starts_with('#') {
+                    read_following_block_inline(cursor, block_indent, parent_indent, depth, state)?
+                } else {
+                    parse_inline_node(
+                        rest,
+                        cursor,
+                        block_indent,
+                        parent_indent,
+                        depth,
+                        state,
+                        &props.tag,
+                    )?
+                };
+                return finish_props(state, props, built);
+            }
+            PropSplit::None => {}
+        }
+    }
+    parse_inline_node(
+        text,
+        cursor,
+        block_indent,
+        parent_indent,
+        depth,
+        state,
+        &Tag::None,
+    )
+}
+
+/// Read the node standing on the lines behind a value text
+/// that carried properties alone, reached from the scalar
+/// dispatch of a block, a dash standing at the value's own
+/// indent opening its sequence and a block standing deeper
+/// than the parent opening under it.
+fn read_following_block_inline(
+    cursor: &mut Cursor,
+    block_indent: usize,
+    parent_indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
+    let Some(nj) = cursor.peek_content() else {
+        return Some(Built::empty_scalar());
+    };
+    let next = cursor.lines[nj].clone();
+    if next.indent == block_indent && is_dash_line(&next) {
+        parse_sequence(cursor, block_indent, depth + 1, state)
+    } else if next.indent > parent_indent {
+        parse_block(cursor, parent_indent, depth + 1, state)
+    } else {
+        Some(Built::empty_scalar())
+    }
+}
+
+fn parse_inline_node(
+    text: &str,
+    cursor: &mut Cursor,
+    block_indent: usize,
+    parent_indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+    tag: &Tag,
+) -> Option<Built> {
     let first = text.chars().next()?;
     if first == '|' || first == '>' {
-        return parse_block_scalar(text, cursor, parent_indent);
+        let value = parse_block_scalar(text, cursor, parent_indent, &state.bindings)?;
+        let YamlValue::Text(assembled) = value else {
+            return None;
+        };
+        if tag.is_constructor() {
+            // No trimming stands between the assembly and the
+            // conversion.
+            let converted = convert_tagged_scalar(tag, &assembled)?;
+            return Some(Built::converted(converted));
+        }
+        return Some(Built::from_text(assembled));
     }
     match first {
         '[' | '{' => {
@@ -1722,7 +2974,7 @@ fn parse_inline_value(
                 combined.push_str(&" ".repeat(line.indent));
                 combined.push_str(&line.text);
             }
-            let mut parser = FlowParser::new(&combined);
+            let mut parser = FlowParser::new(&combined, state);
             let value = parser.parse_value(depth)?;
             parser.skip_separators();
             if parser.pos != parser.chars.len() {
@@ -1733,18 +2985,41 @@ fn parse_inline_value(
         '"' => {
             let (value, end) = parse_double_quoted(text)?;
             check_trailing(&text[end..])?;
-            Some(YamlValue::Text(value))
+            if tag.is_constructor() {
+                let converted = convert_tagged_scalar(tag, &value)?;
+                return Some(Built::converted(converted));
+            }
+            Some(Built::from_text(value))
         }
         '\'' => {
             let (value, end) = parse_single_quoted(text)?;
             check_trailing(&text[end..])?;
-            Some(YamlValue::Text(value))
+            if tag.is_constructor() {
+                let converted = convert_tagged_scalar(tag, &value)?;
+                return Some(Built::converted(converted));
+            }
+            Some(Built::from_text(value))
         }
-        '&' | '*' | '!' | '%' | '@' | '`' | ']' | '}' | ',' => None,
+        '*' => {
+            // An alias reads as a copy of the anchored value
+            // standing under its name, the whole text standing
+            // as the alias token and a comment at most.
+            let bytes = text.as_bytes();
+            let mut end = 1;
+            while end < bytes.len() && is_anchor_char(bytes[end]) {
+                end += 1;
+            }
+            if end == 1 {
+                return None;
+            }
+            check_trailing(&text[end..])?;
+            state.resolve_alias(&text[1..end])
+        }
+        '&' | '!' | '%' | '@' | '`' | ']' | '}' | ',' => None,
         '?' if text == "?" || text.starts_with("? ") => None,
         ':' if text == ":" || text.starts_with(": ") => None,
         '-' if text == "-" || text.starts_with("- ") => None,
-        '#' => Some(YamlValue::Null),
+        '#' => Some(Built::scalar(YamlValue::Null)),
         _ => {
             let first_cut = cut_comment(text);
             if !plain_segment_stands(first_cut) {
@@ -1809,7 +3084,26 @@ fn parse_inline_value(
                 }
                 folded.push_str(chunk);
             }
-            resolve_plain_scalar(&folded)
+            if tag.is_constructor() {
+                let converted = convert_tagged_scalar(tag, &folded)?;
+                return Some(Built::converted(converted));
+            }
+            if folded == "<<" {
+                // The plain merge spelling standing in value
+                // position refuses, its standing reading as
+                // plain text in value position ended with
+                // this slice.
+                return None;
+            }
+            let value = resolve_plain_scalar(&folded)?;
+            Some(Built {
+                value,
+                tally: 0,
+                items: None,
+                text: Some(folded),
+                plain_token: None,
+                tag_done: false,
+            })
         }
     }
 }
@@ -1833,11 +3127,15 @@ enum Chomping {
 /// node's indent in a mapping entry or a dash entry shape,
 /// and a document end marker at column 0 ends the scalar the
 /// same way.
-fn sibling_or_end_shape(line: &Line, parent_indent: usize) -> bool {
+fn sibling_or_end_shape(
+    line: &Line,
+    parent_indent: usize,
+    bindings: &HashMap<String, String>,
+) -> bool {
     if line.indent == 0 && (line.text == "..." || line.text.starts_with("... ")) {
         return true;
     }
-    line.indent <= parent_indent && (find_key_split(&line.text).is_some() || is_dash_line(line))
+    line.indent <= parent_indent && (mapping_shape(&line.text, bindings) || is_dash_line(line))
 }
 
 /// Read a block scalar whose head stands in `text`, the lines
@@ -1845,7 +3143,12 @@ fn sibling_or_end_shape(line: &Line, parent_indent: usize) -> bool {
 /// position, under PORT3-1 to PORT3-5. The holding node's
 /// indent is `parent_indent`. On a reading the cursor stands
 /// on the first line that is not part of the scalar.
-fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> Option<YamlValue> {
+fn parse_block_scalar(
+    text: &str,
+    cursor: &mut Cursor,
+    parent_indent: usize,
+    bindings: &HashMap<String, String>,
+) -> Option<YamlValue> {
     let bytes = text.as_bytes();
     let folded = bytes[0] == b'>';
     let mut index = 1usize;
@@ -1906,7 +3209,7 @@ fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> 
                 break;
             }
             if line.indent < floor {
-                if sibling_or_end_shape(&line, parent_indent) {
+                if sibling_or_end_shape(&line, parent_indent, bindings) {
                     break;
                 }
                 return None;
@@ -1926,7 +3229,7 @@ fn parse_block_scalar(text: &str, cursor: &mut Cursor, parent_indent: usize) -> 
         }
         if line.indent < width {
             if first_content.is_none() {
-                if sibling_or_end_shape(&line, parent_indent) {
+                if sibling_or_end_shape(&line, parent_indent, bindings) {
                     break;
                 }
                 return None;
@@ -2134,16 +3437,28 @@ fn flow_closed(text: &str) -> bool {
 // Flow collections
 // ----------------------------------------------------------------
 
-struct FlowParser {
+struct FlowParser<'a> {
     chars: Vec<char>,
     pos: usize,
+    state: &'a mut ReadState,
+    // The standing of the node the last parse_value read at
+    // its own level, its plain token when it stood as one and
+    // the properties that stood in front of it, for the
+    // single pair and merge readings of its consumers.
+    last_plain: Option<String>,
+    last_anchor: bool,
+    last_tag: Tag,
 }
 
-impl FlowParser {
-    fn new(text: &str) -> FlowParser {
+impl<'a> FlowParser<'a> {
+    fn new(text: &str, state: &'a mut ReadState) -> FlowParser<'a> {
         FlowParser {
             chars: text.chars().collect(),
             pos: 0,
+            state,
+            last_plain: None,
+            last_anchor: false,
+            last_tag: Tag::None,
         }
     }
 
@@ -2170,35 +3485,196 @@ impl FlowParser {
         self.chars.get(self.pos).copied()
     }
 
-    fn parse_value(&mut self, depth: usize) -> Option<YamlValue> {
+    /// Take the properties standing in front of a flow node,
+    /// at most one anchor and at most one tag in either order.
+    fn take_properties(&mut self) -> Option<Props> {
+        let mut props = Props::new();
+        loop {
+            match self.peek()? {
+                '&' => {
+                    if props.anchor.is_some() {
+                        return None;
+                    }
+                    let start = self.pos + 1;
+                    let mut end = start;
+                    while end < self.chars.len() && is_anchor_char_char(self.chars[end]) {
+                        end += 1;
+                    }
+                    if end == start {
+                        return None;
+                    }
+                    match self.chars.get(end) {
+                        None | Some(' ' | '\t' | '\n' | '\r' | ',' | ']' | '}' | ':') => {}
+                        _ => return None,
+                    }
+                    props.anchor = Some(self.chars[start..end].iter().collect());
+                    self.pos = end;
+                }
+                '!' => {
+                    if props.tag != Tag::None {
+                        return None;
+                    }
+                    props.tag = self.take_tag_token()?;
+                }
+                _ => break,
+            }
+            self.skip_separators();
+            if !matches!(self.peek(), Some('&') | Some('!')) {
+                break;
+            }
+        }
+        Some(props)
+    }
+
+    /// Take the tag token standing at the cursor, resolving
+    /// its spelling under the standing bindings.
+    fn take_tag_token(&mut self) -> Option<Tag> {
+        if self.chars.get(self.pos + 1) == Some(&'<') {
+            let mut end = self.pos + 2;
+            while end < self.chars.len() && self.chars[end] != '>' {
+                end += 1;
+            }
+            if end >= self.chars.len() {
+                return None;
+            }
+            let full: String = self.chars[self.pos + 2..end].iter().collect();
+            if full.is_empty() {
+                return None;
+            }
+            let after = end + 1;
+            match self.chars.get(after) {
+                None | Some(' ' | '\t' | '\n' | '\r' | ',' | ']' | '}' | ':') => {}
+                _ => return None,
+            }
+            self.pos = after;
+            return Some(classify_tag(&full));
+        }
+        let mut end = self.pos;
+        while end < self.chars.len()
+            && !matches!(self.chars[end], ' ' | '\t' | '\n' | '\r' | ',' | ']' | '}')
+        {
+            end += 1;
+        }
+        let token: String = self.chars[self.pos..end].iter().collect();
+        self.pos = end;
+        resolve_tag_spelling(&token, &self.state.bindings)
+    }
+
+    /// Take the one tag token a flow key can carry, the merge
+    /// tag and the non-specific tag standing and every other
+    /// tag refusing.
+    fn take_key_tag(&mut self) -> Option<KeyTag> {
+        match self.take_tag_token()? {
+            Tag::Merge => Some(KeyTag::Merge),
+            Tag::NonSpecific => Some(KeyTag::NonSpecific),
+            _ => None,
+        }
+    }
+
+    fn parse_value(&mut self, depth: usize) -> Option<Built> {
         if depth > MAX_YAML_NESTING {
             return None;
         }
         self.skip_separators();
+        let mut props = Props::new();
+        if matches!(self.peek(), Some('&') | Some('!')) {
+            props = self.take_properties()?;
+            self.skip_separators();
+            if self.peek() == Some('*') {
+                // A property standing in front of an alias
+                // refuses, as the runtime reading refuses it.
+                return None;
+            }
+            if let Some(name) = &props.anchor {
+                self.state.mark(name)?;
+            }
+            if matches!(self.peek(), Some(',') | Some(']') | Some('}')) {
+                // The property stands in front of no node, the
+                // empty scalar standing as its node.
+                let built = finish_props(self.state, props.clone(), Built::empty_scalar())?;
+                self.last_plain = None;
+                self.last_anchor = props.anchor.is_some();
+                self.last_tag = props.tag.clone();
+                return Some(built);
+            }
+        }
+        let tag = props.tag.clone();
+        let built = self.parse_flow_node(depth, &tag)?;
+        let built = finish_props(self.state, props.clone(), built)?;
+        self.last_plain = built.plain_token.clone();
+        self.last_anchor = props.anchor.is_some();
+        self.last_tag = props.tag.clone();
+        Some(built)
+    }
+
+    fn parse_flow_node(&mut self, depth: usize, tag: &Tag) -> Option<Built> {
         match self.peek()? {
             '[' => {
                 self.pos += 1;
-                let mut items = Vec::new();
+                let mut items: Vec<Built> = Vec::new();
                 loop {
                     self.skip_separators();
                     if self.peek() == Some(']') {
                         self.pos += 1;
-                        return Some(YamlValue::List(items));
+                        return Some(Built::list(items));
                     }
                     let item = self.parse_value(depth + 1)?;
+                    let item_plain = self.last_plain.clone();
+                    let item_anchor = self.last_anchor;
+                    let item_tag = self.last_tag.clone();
                     self.skip_separators();
                     let item = if self.peek() == Some(':') {
                         // A single pair mapping standing in a
-                        // sequence.
-                        let key = YamlKey::of(&item)?;
+                        // sequence, or a merge pair standing as
+                        // one.
                         self.pos += 1;
                         self.skip_separators();
                         let value = match self.peek() {
-                            Some(',') | Some(']') => YamlValue::Null,
+                            Some(',') | Some(']') => Built::scalar(YamlValue::Null),
                             _ => self.parse_value(depth + 1)?,
                         };
-                        YamlValue::Mapping(vec![(key, value)])
+                        if self.last_plain.as_deref() == Some("<<") {
+                            return None;
+                        }
+                        if item_plain.as_deref() == Some("<<") || item_tag == Tag::Merge {
+                            if item_anchor {
+                                return None;
+                            }
+                            let mut merged: Vec<(YamlKey, YamlValue)> = Vec::new();
+                            let mut tally = 0usize;
+                            expand_merge_into(self.state, value, &mut merged, &mut tally)?;
+                            let mut pairs: Vec<(YamlKey, YamlValue)> = Vec::new();
+                            for (key, value) in merged {
+                                insert_pair(&mut pairs, key, value);
+                            }
+                            Built {
+                                value: YamlValue::Mapping(pairs),
+                                tally,
+                                items: None,
+                                text: None,
+                                plain_token: None,
+                                tag_done: false,
+                            }
+                        } else {
+                            if item_anchor || !matches!(item_tag, Tag::None | Tag::NonSpecific) {
+                                return None;
+                            }
+                            let key = YamlKey::of(&item.value)?;
+                            Built {
+                                value: YamlValue::Mapping(vec![(key, value.value)]),
+                                tally: item.tally + value.tally,
+                                items: None,
+                                text: None,
+                                plain_token: None,
+                                tag_done: false,
+                            }
+                        }
                     } else {
+                        if item_plain.as_deref() == Some("<<") {
+                            // The plain merge spelling standing
+                            // in entry position refuses.
+                            return None;
+                        }
                         item
                     };
                     items.push(item);
@@ -2209,7 +3685,7 @@ impl FlowParser {
                         }
                         Some(']') => {
                             self.pos += 1;
-                            return Some(YamlValue::List(items));
+                            return Some(Built::list(items));
                         }
                         _ => return None,
                     }
@@ -2217,27 +3693,87 @@ impl FlowParser {
             }
             '{' => {
                 self.pos += 1;
-                let mut pairs: Vec<(YamlKey, YamlValue)> = Vec::new();
+                let mut explicit: Vec<(YamlKey, Built)> = Vec::new();
+                let mut merge_sources: Vec<Built> = Vec::new();
                 loop {
                     self.skip_separators();
                     if self.peek() == Some('}') {
                         self.pos += 1;
-                        return Some(YamlValue::Mapping(pairs));
+                        break;
                     }
-                    let key_item = self.parse_value(depth + 1)?;
-                    let key = YamlKey::of(&key_item)?;
+                    // The key stands read by a scalar path of
+                    // its own that no property reaches, an
+                    // anchor or an alias in front of it
+                    // refusing and a tag standing only as the
+                    // merge tag or the non-specific tag.
+                    if self.peek() == Some('&') || self.peek() == Some('*') {
+                        return None;
+                    }
+                    let mut key_tag = KeyTag::None;
+                    if self.peek() == Some('!') {
+                        key_tag = self.take_key_tag()?;
+                        self.skip_separators();
+                        if self.peek() == Some('&') || self.peek() == Some('*') {
+                            return None;
+                        }
+                    }
+                    let (key_value, key_plain) = match self.peek()? {
+                        '"' => {
+                            let text: String = self.chars[self.pos..].iter().collect();
+                            let (value, end) = parse_flow_double_quoted(&text)?;
+                            self.pos += end;
+                            (YamlValue::Text(value), None)
+                        }
+                        '\'' => {
+                            let text: String = self.chars[self.pos..].iter().collect();
+                            let (value, end) = parse_flow_single_quoted(&text)?;
+                            self.pos += end;
+                            (YamlValue::Text(value), None)
+                        }
+                        '[' | '{' => {
+                            let built = self.parse_value(depth + 1)?;
+                            (built.value, None)
+                        }
+                        ',' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => return None,
+                        _ => {
+                            let folded = self.scan_plain_token()?;
+                            let plain = if folded == "<<" {
+                                Some(folded.clone())
+                            } else {
+                                None
+                            };
+                            (resolve_plain_scalar(&folded)?, plain)
+                        }
+                    };
                     self.skip_separators();
+                    let merge_key = key_tag == KeyTag::Merge
+                        || (matches!(key_tag, KeyTag::None | KeyTag::NonSpecific)
+                            && key_plain.as_deref() == Some("<<"));
                     let value = if self.peek() == Some(':') {
                         self.pos += 1;
                         self.skip_separators();
                         match self.peek() {
-                            Some(',') | Some('}') => YamlValue::Null,
-                            _ => self.parse_value(depth + 1)?,
+                            Some(',') | Some('}') => Built::scalar(YamlValue::Null),
+                            _ => {
+                                let value = self.parse_value(depth + 1)?;
+                                if self.last_plain.as_deref() == Some("<<") {
+                                    // The plain merge spelling
+                                    // standing in value position
+                                    // refuses.
+                                    return None;
+                                }
+                                value
+                            }
                         }
                     } else {
-                        YamlValue::Null
+                        Built::scalar(YamlValue::Null)
                     };
-                    insert_pair(&mut pairs, key, value);
+                    if merge_key {
+                        merge_sources.push(value);
+                    } else {
+                        let key = YamlKey::of(&key_value)?;
+                        explicit.push((key, value));
+                    }
                     self.skip_separators();
                     match self.peek() {
                         Some(',') => {
@@ -2245,79 +3781,131 @@ impl FlowParser {
                         }
                         Some('}') => {
                             self.pos += 1;
-                            return Some(YamlValue::Mapping(pairs));
+                            break;
                         }
                         _ => return None,
                     }
                 }
+                flatten_mapping(self.state, merge_sources, explicit)
             }
             '"' => {
                 let text: String = self.chars[self.pos..].iter().collect();
                 let (value, end) = parse_flow_double_quoted(&text)?;
                 self.pos += end;
-                Some(YamlValue::Text(value))
+                if tag.is_constructor() {
+                    let converted = convert_tagged_scalar(tag, &value)?;
+                    return Some(Built::converted(converted));
+                }
+                Some(Built::from_text(value))
             }
             '\'' => {
                 let text: String = self.chars[self.pos..].iter().collect();
                 let (value, end) = parse_flow_single_quoted(&text)?;
                 self.pos += end;
-                Some(YamlValue::Text(value))
+                if tag.is_constructor() {
+                    let converted = convert_tagged_scalar(tag, &value)?;
+                    return Some(Built::converted(converted));
+                }
+                Some(Built::from_text(value))
             }
-            ',' | ']' | '}' | ':' => None,
-            _ => {
-                // A token opening with an indicator stands in
-                // the refused family of the contract, an anchor
-                // or an alias or a tag or a block scalar head or
-                // a reserved indicator, in flow position as in
-                // block position. The plain reading never takes
-                // one as text.
-                if matches!(
-                    self.peek(),
-                    Some('&' | '*' | '!' | '|' | '>' | '%' | '@' | '`')
-                ) {
+            '*' => {
+                let start = self.pos + 1;
+                let mut end = start;
+                while end < self.chars.len() && is_anchor_char_char(self.chars[end]) {
+                    end += 1;
+                }
+                if end == start {
                     return None;
                 }
-                let start = self.pos;
-                let mut index = self.pos;
-                loop {
-                    match self.chars.get(index) {
-                        None => break,
-                        Some(',') | Some('[') | Some(']') | Some('{') | Some('}') => break,
-                        Some(':') => {
-                            let next = self.chars.get(index + 1);
-                            if next.is_none()
-                                || matches!(
-                                    next,
-                                    Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{')
-                                )
-                            {
-                                break;
-                            }
-                            index += 1;
-                        }
-                        Some('#') => {
-                            if index > start && matches!(self.chars[index - 1], ' ' | '\t' | '\n') {
-                                break;
-                            }
-                            index += 1;
-                        }
-                        Some(_) => index += 1,
+                let name: String = self.chars[start..end].iter().collect();
+                self.pos = end;
+                self.state.resolve_alias(&name)
+            }
+            ',' | ']' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => None,
+            _ => self.parse_flow_plain(tag),
+        }
+    }
+
+    /// Scan one plain token standing at the cursor and hand
+    /// back its folded text. A token opening with an
+    /// indicator stands in the refused family, a block scalar
+    /// head or a reserved indicator or a stray property the
+    /// property reading did not take.
+    fn scan_plain_token(&mut self) -> Option<String> {
+        if matches!(
+            self.peek(),
+            Some('&' | '*' | '!' | '|' | '>' | '%' | '@' | '`')
+        ) {
+            return None;
+        }
+        let start = self.pos;
+        let mut index = self.pos;
+        loop {
+            match self.chars.get(index) {
+                None => break,
+                Some(',') | Some('[') | Some(']') | Some('{') | Some('}') => break,
+                Some(':') => {
+                    let next = self.chars.get(index + 1);
+                    if next.is_none()
+                        || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{'))
+                    {
+                        break;
                     }
+                    index += 1;
                 }
-                let raw: String = self.chars[start..index].iter().collect();
-                self.pos = index;
-                // A tab inside a flow plain scalar refuses the
-                // reading, as it does in block position.
-                if raw.contains('\t') {
-                    return None;
+                Some('#') => {
+                    if index > start && matches!(self.chars[index - 1], ' ' | '\t' | '\n') {
+                        break;
+                    }
+                    index += 1;
                 }
-                let folded = fold_flow_plain(&raw);
-                if folded.is_empty() {
-                    return None;
-                }
-                resolve_plain_scalar(&folded)
+                Some(_) => index += 1,
             }
         }
+        let raw: String = self.chars[start..index].iter().collect();
+        self.pos = index;
+        // A tab inside a flow plain scalar refuses the
+        // reading, as it does in block position.
+        if raw.contains('\t') {
+            return None;
+        }
+        let folded = fold_flow_plain(&raw);
+        if folded.is_empty() {
+            return None;
+        }
+        Some(folded)
+    }
+
+    fn parse_flow_plain(&mut self, tag: &Tag) -> Option<Built> {
+        let folded = self.scan_plain_token()?;
+        if tag.is_constructor() {
+            let converted = convert_tagged_scalar(tag, &folded)?;
+            return Some(Built::converted(converted));
+        }
+        if folded == "<<" && matches!(tag, Tag::None | Tag::NonSpecific | Tag::Merge) {
+            // The plain merge spelling stands for the
+            // consumers that can take it as a key to read,
+            // its token recorded on the value, and the
+            // consumers that stand in value position refuse
+            // it on the record.
+            return Some(Built {
+                value: YamlValue::Text("<<".to_string()),
+                tally: 0,
+                items: None,
+                text: Some("<<".to_string()),
+                plain_token: Some("<<".to_string()),
+                tag_done: false,
+            });
+        }
+        let value = resolve_plain_scalar(&folded)?;
+        Some(Built {
+            value,
+            tally: 0,
+            items: None,
+            text: Some(folded),
+            plain_token: None,
+            tag_done: false,
+        })
     }
 }
 
