@@ -59,10 +59,7 @@ fn test_an_anchor_on_an_empty_mapping_value_binds_the_nested_block_collection() 
 
 #[test]
 fn test_an_anchor_on_a_sequence_entry_binds_its_value() {
-    assert_eq!(
-        reads("- &x 5\n- *x\n"),
-        want(list(vec![int(5), int(5)]))
-    );
+    assert_eq!(reads("- &x 5\n- *x\n"), want(list(vec![int(5), int(5)])));
 }
 
 #[test]
@@ -172,8 +169,7 @@ fn test_a_merge_list_lets_the_earlier_listed_source_win_its_repeated_keys() {
 }
 
 #[test]
-fn test_an_explicit_pair_repeated_around_a_merge_takes_the_last_value_at_the_flattened_position()
-{
+fn test_an_explicit_pair_repeated_around_a_merge_takes_the_last_value_at_the_flattened_position() {
     assert_eq!(
         reads("s: &s {x: 1, y: 1}\nb:\n  x: 0\n  <<: *s\n  x: 9\n"),
         want(mapping(vec![
@@ -237,10 +233,7 @@ fn test_the_plain_merge_spelling_standing_in_value_position_is_refused() {
 
 #[test]
 fn test_the_str_tag_reads_a_number_spelling_and_a_date_spelling_as_text() {
-    assert_eq!(
-        reads("a: !!str 5\n"),
-        want(mapping(vec![("a", text("5"))]))
-    );
+    assert_eq!(reads("a: !!str 5\n"), want(mapping(vec![("a", text("5"))])));
     assert_eq!(
         reads("a: !!str 2026-10-14\n"),
         want(mapping(vec![("a", text("2026-10-14"))]))
@@ -257,10 +250,7 @@ fn test_the_int_tag_reads_the_hex_and_sexagesimal_and_octal_spellings() {
         reads("a: !!int 1:99\n"),
         want(mapping(vec![("a", int(159))]))
     );
-    assert_eq!(
-        reads("a: !!int 017\n"),
-        want(mapping(vec![("a", int(15))]))
-    );
+    assert_eq!(reads("a: !!int 017\n"), want(mapping(vec![("a", int(15))])));
 }
 
 #[test]
@@ -294,10 +284,7 @@ fn test_the_timestamp_tag_reads_a_date_and_a_datetime() {
 
 #[test]
 fn test_a_tagged_empty_scalar_under_str_reads_as_the_empty_string() {
-    assert_eq!(
-        reads("a: !!str\n"),
-        want(mapping(vec![("a", text(""))]))
-    );
+    assert_eq!(reads("a: !!str\n"), want(mapping(vec![("a", text(""))])));
 }
 
 // PORT4-7, collection tags and unknown tags.

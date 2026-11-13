@@ -348,7 +348,6 @@ fn test_a_block_head_in_flow_position_is_refused() {
     assert_eq!(reads("{a: |}\n"), None);
 }
 
-
 #[test]
 fn test_a_block_scalar_as_a_key_is_refused() {
     assert_eq!(reads("? |\n  x\n: 1\n"), None);

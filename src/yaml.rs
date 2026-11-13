@@ -1819,7 +1819,6 @@ fn finish_props(state: &mut ReadState, props: Props, built: Built) -> Option<Bui
     Some(built)
 }
 
-
 /// The char spans of the lines standing inside block scalar
 /// content, as a pre-scan over the text finds them, so the tab
 /// standing can exempt the tabs that stand inside block
@@ -2541,8 +2540,7 @@ fn parse_mapping(
         }
         let key = YamlKey::of(&key_value)?;
         let merge_key = key_props.tag == KeyTag::Merge
-            || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific)
-                && key_raw == "<<");
+            || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific) && key_raw == "<<");
         let rest = line.text[rest_start..].trim_start().to_string();
         cursor.pos = li + 1;
         let value = if rest.is_empty() || rest.starts_with('#') {
@@ -3129,7 +3127,11 @@ enum Chomping {
 /// node's indent in a mapping entry or a dash entry shape,
 /// and a document end marker at column 0 ends the scalar the
 /// same way.
-fn sibling_or_end_shape(line: &Line, parent_indent: usize, bindings: &HashMap<String, String>) -> bool {
+fn sibling_or_end_shape(
+    line: &Line,
+    parent_indent: usize,
+    bindings: &HashMap<String, String>,
+) -> bool {
     if line.indent == 0 && (line.text == "..." || line.text.starts_with("... ")) {
         return true;
     }
@@ -3502,8 +3504,7 @@ impl<'a> FlowParser<'a> {
                         return None;
                     }
                     match self.chars.get(end) {
-                        None
-                        | Some(' ' | '\t' | '\n' | '\r' | ',' | ']' | '}' | ':') => {}
+                        None | Some(' ' | '\t' | '\n' | '\r' | ',' | ']' | '}' | ':') => {}
                         _ => return None,
                     }
                     props.anchor = Some(self.chars[start..end].iter().collect());
@@ -3655,9 +3656,7 @@ impl<'a> FlowParser<'a> {
                                 tag_done: false,
                             }
                         } else {
-                            if item_anchor
-                                || !matches!(item_tag, Tag::None | Tag::NonSpecific)
-                            {
+                            if item_anchor || !matches!(item_tag, Tag::None | Tag::NonSpecific) {
                                 return None;
                             }
                             let key = YamlKey::of(&item.value)?;
@@ -3848,10 +3847,7 @@ impl<'a> FlowParser<'a> {
                 Some(':') => {
                     let next = self.chars.get(index + 1);
                     if next.is_none()
-                        || matches!(
-                            next,
-                            Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{')
-                        )
+                        || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{'))
                     {
                         break;
                     }
