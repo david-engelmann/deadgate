@@ -22,7 +22,7 @@ Where a conversion raises an error outside the yaml error
 family, the exception's type name stands recorded in the
 error form, as PORT4-10 states. The binary and set and omap
 and pairs shapes never reach the tag function, since their
-values carry no tagged form here; the corpus carries no such
+values carry no tagged form here. The corpus carries no such
 case as a recorded answer, and this script refuses to write
 one.
 
