@@ -10,7 +10,8 @@
 //! contract states stand at the edges, document apparatus
 //! beyond one leading opener and one trailing closer refused,
 //! block scalars refused in flow position and read in block
-//! position, quoted scalars spanning lines refused, a mapping
+//! position, quoted scalars spanning lines read under the
+//! seventh slice inside its borders, a mapping
 //! key that is a container refused, and nesting bounded at
 //! 4000. Anchors and aliases and merge keys and tags stand
 //! read under the fourth slice inside its borders, properties
@@ -2372,7 +2373,7 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
         while let Some(found) = cursor.next_content(index) {
             let text = cursor.lines[found].text.clone();
             let column_zero = cursor.lines[found].indent == 0;
-            if column_zero && (text == "---" || text.starts_with("--- ") || text.starts_with('%')) {
+            if column_zero && (text == "---" || text.starts_with("--- ")) {
                 return None;
             }
             if column_zero && (text == "..." || text.starts_with("... ")) {
@@ -2614,13 +2615,8 @@ fn read_explicit_key_text(
         return Some((key, false));
     }
     let value = if first == '"' || first == '\'' {
-        let trimmed = raw.trim();
-        let (quoted, end) = if first == '"' {
-            parse_double_quoted(trimmed)?
-        } else {
-            parse_single_quoted(trimmed)?
-        };
-        check_trailing(&trimmed[end..])?;
+        let (quoted, rest) = read_block_quoted(raw, cursor, first == '"')?;
+        check_trailing(&rest)?;
         match &key_props.tag {
             KeyTag::Convert(tag) => convert_tagged_scalar(tag, &quoted)?,
             _ => YamlValue::Text(quoted),
@@ -3137,87 +3133,281 @@ fn parse_key_scalar(raw: &str) -> Option<YamlValue> {
     resolve_plain_scalar(raw.trim())
 }
 
+/// One unit of a quoted scalar's raw span, as the folding of
+/// the seventh slice reads it. A character an escape spells
+/// stands as one unit of its own, so the folding never folds
+/// it and the trimming never trims it, and a raw break and a
+/// raw blank stand as units of theirs, so the folding runs on
+/// the span as written and not on the decoded text.
+#[derive(Clone, Copy)]
+enum SpanUnit {
+    /// A letter of the span as written.
+    Char(char),
+    /// A character an escape spells, standing as content.
+    Escaped(char),
+    /// A raw break standing in the span.
+    Break,
+    /// A raw space or tab standing in the span, food for the
+    /// trimming that stands beside a break.
+    Blank(char),
+}
+
+/// The outcome of scanning one quoted span. A span the text
+/// ends inside of stands unterminated, and a block reading
+/// gathers the lines behind it and scans again, where a span
+/// the reading refuses stands refused at once.
+enum SpanRead {
+    /// The folded text and the byte index just past the
+    /// closing quote.
+    Closed(String, usize),
+    /// The text ends before the closing quote stands.
+    Unterminated,
+    /// The span stands refused on its own ground.
+    Refused,
+}
+
+/// Whether a document marker opens at the byte a crossed
+/// line's head stands at, the marker spelling followed by a
+/// blank or a break or the end of the text.
+fn marker_at_head(text: &str, pos: usize) -> bool {
+    let rest = &text[pos..];
+    if !rest.starts_with("---") && !rest.starts_with("...") {
+        return false;
+    }
+    matches!(rest[3..].chars().next(), None | Some(' ' | '\t' | '\n'))
+}
+
+/// Scan the quoted span opening at the head of the text, the
+/// raw span read whole. A raw break folds as a unit of the
+/// span, a backslash at the end of a line joins the span with
+/// nothing standing and takes the blanks that open the next
+/// line with it, and a line a span crosses that opens with a
+/// document marker refuses the span, the marker standing on
+/// the opening line or indented on a crossed line standing as
+/// content. The text the reading hands over carries every
+/// break form as the one line feed, the normalization at the
+/// door having taken them, so the folding states its algebra
+/// over the line feed alone.
+fn read_quoted_span(text: &str, double: bool) -> SpanRead {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut units: Vec<SpanUnit> = Vec::new();
+    let mut index = 1;
+    while index < chars.len() {
+        let (byte, ch) = chars[index];
+        match ch {
+            '"' if double => {
+                return SpanRead::Closed(fold_span_units(&units), byte + 1);
+            }
+            '\'' if !double => {
+                if chars.get(index + 1).map(|pair| pair.1) == Some('\'') {
+                    units.push(SpanUnit::Char('\''));
+                    index += 2;
+                    continue;
+                }
+                return SpanRead::Closed(fold_span_units(&units), byte + 1);
+            }
+            '\\' if double => {
+                let Some(&(escape_byte, escape)) = chars.get(index + 1) else {
+                    return SpanRead::Unterminated;
+                };
+                if escape == '\n' {
+                    // A broken line inside a double quoted
+                    // scalar joins with nothing standing, and
+                    // the marker standing at the head of the
+                    // line it crosses refuses as it refuses
+                    // across a folded break.
+                    if marker_at_head(text, escape_byte + 1) {
+                        return SpanRead::Refused;
+                    }
+                    index += 2;
+                    while matches!(chars.get(index), Some((_, ' ' | '\t'))) {
+                        index += 1;
+                    }
+                    continue;
+                }
+                index += 2;
+                let decoded = match escape {
+                    '0' => '\0',
+                    'a' => '\u{7}',
+                    'b' => '\u{8}',
+                    't' | '\t' => '\t',
+                    'n' => '\n',
+                    'v' => '\u{B}',
+                    'f' => '\u{C}',
+                    'r' => '\r',
+                    'e' => '\u{1B}',
+                    '"' => '"',
+                    '/' => '/',
+                    '\\' => '\\',
+                    'N' => '\u{85}',
+                    '_' => '\u{A0}',
+                    'L' => '\u{2028}',
+                    'P' => '\u{2029}',
+                    'x' | 'u' | 'U' => {
+                        let count = match escape {
+                            'x' => 2,
+                            'u' => 4,
+                            _ => 8,
+                        };
+                        let mut value: u32 = 0;
+                        for _ in 0..count {
+                            let Some(&(_, digit)) = chars.get(index) else {
+                                return SpanRead::Unterminated;
+                            };
+                            let Some(digit) = digit.to_digit(16) else {
+                                return SpanRead::Refused;
+                            };
+                            value = value * 16 + digit;
+                            index += 1;
+                        }
+                        match char::from_u32(value) {
+                            Some(ch) => ch,
+                            None => return SpanRead::Refused,
+                        }
+                    }
+                    _ => return SpanRead::Refused,
+                };
+                units.push(SpanUnit::Escaped(decoded));
+            }
+            '\n' => {
+                if marker_at_head(text, byte + 1) {
+                    return SpanRead::Refused;
+                }
+                units.push(SpanUnit::Break);
+                index += 1;
+            }
+            ' ' | '\t' => {
+                units.push(SpanUnit::Blank(ch));
+                index += 1;
+            }
+            ch => {
+                if (ch as u32) < 0x20 {
+                    return SpanRead::Refused;
+                }
+                units.push(SpanUnit::Char(ch));
+                index += 1;
+            }
+        }
+    }
+    SpanRead::Unterminated
+}
+
+/// Fold the units of one quoted span. The units gather into
+/// text pieces and break runs, a blank beside a break
+/// standing inside the run and a blank at the edge of a text
+/// piece trimming where a run stands beside it, and a run of
+/// one break folds to one space and a run of two or more
+/// breaks folds to one break fewer than it carries, at the
+/// edges of the span as between its letters.
+fn fold_span_units(units: &[SpanUnit]) -> String {
+    enum Piece {
+        Text(Vec<SpanUnit>),
+        Breaks(usize),
+    }
+    let mut pieces: Vec<Piece> = Vec::new();
+    for unit in units {
+        match unit {
+            SpanUnit::Break => match pieces.last_mut() {
+                Some(Piece::Breaks(count)) => *count += 1,
+                _ => pieces.push(Piece::Breaks(1)),
+            },
+            SpanUnit::Blank(_) => match pieces.last_mut() {
+                Some(Piece::Breaks(_)) => {}
+                Some(Piece::Text(text)) => text.push(*unit),
+                None => pieces.push(Piece::Text(vec![*unit])),
+            },
+            SpanUnit::Char(_) | SpanUnit::Escaped(_) => match pieces.last_mut() {
+                Some(Piece::Text(text)) => text.push(*unit),
+                _ => pieces.push(Piece::Text(vec![*unit])),
+            },
+        }
+    }
+    let mut out = String::new();
+    for (position, piece) in pieces.iter().enumerate() {
+        match piece {
+            Piece::Breaks(count) => {
+                if *count == 1 {
+                    out.push(' ');
+                } else {
+                    out.push_str(&"\n".repeat(count - 1));
+                }
+            }
+            Piece::Text(text) => {
+                let mut slice: &[SpanUnit] = text;
+                if position > 0 {
+                    while matches!(slice.first(), Some(SpanUnit::Blank(_))) {
+                        slice = &slice[1..];
+                    }
+                }
+                if position + 1 < pieces.len() {
+                    while matches!(slice.last(), Some(SpanUnit::Blank(_))) {
+                        slice = &slice[..slice.len() - 1];
+                    }
+                }
+                for unit in slice {
+                    match unit {
+                        SpanUnit::Char(ch) | SpanUnit::Escaped(ch) | SpanUnit::Blank(ch) => {
+                            out.push(*ch)
+                        }
+                        SpanUnit::Break => unreachable!(),
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Read a quoted scalar standing in a block position, on the
+/// line the caller hands over or spanning the lines behind
+/// it, handing back the folded text and the rest of the line
+/// the closing quote stands on. The lines the span crosses
+/// stand gathered as the flow reading gathers them, each
+/// line's indent standing in front of its text.
+fn read_block_quoted(text: &str, cursor: &mut Cursor, double: bool) -> Option<(String, String)> {
+    match read_quoted_span(text, double) {
+        SpanRead::Closed(value, end) => {
+            return Some((value, text[end..].to_string()));
+        }
+        SpanRead::Refused => return None,
+        SpanRead::Unterminated => {}
+    }
+    let mut combined = text.to_string();
+    loop {
+        if cursor.pos >= cursor.lines.len() {
+            return None;
+        }
+        let line = cursor.lines[cursor.pos].clone();
+        cursor.pos += 1;
+        combined.push('\n');
+        combined.push_str(&" ".repeat(line.indent));
+        combined.push_str(&line.text);
+        match read_quoted_span(&combined, double) {
+            SpanRead::Closed(value, end) => {
+                return Some((value, combined[end..].to_string()));
+            }
+            SpanRead::Refused => return None,
+            SpanRead::Unterminated => {}
+        }
+    }
+}
+
 /// Parse a single quoted scalar standing on one line, handing
 /// back its text and the byte index just past its close.
 fn parse_single_quoted(text: &str) -> Option<(String, usize)> {
-    let mut out = String::new();
-    let mut index = 1;
-    let bytes = text.as_bytes();
-    while index < bytes.len() {
-        if bytes[index] == b'\'' {
-            if bytes.get(index + 1) == Some(&b'\'') {
-                out.push('\'');
-                index += 2;
-                continue;
-            }
-            return Some((out, index + 1));
-        }
-        let ch = text[index..].chars().next()?;
-        out.push(ch);
-        index += ch.len_utf8();
+    match read_quoted_span(text, false) {
+        SpanRead::Closed(value, end) => Some((value, end)),
+        _ => None,
     }
-    None
 }
 
 /// Parse a double quoted scalar standing on one line, handing
 /// back its text and the byte index just past its close.
 fn parse_double_quoted(text: &str) -> Option<(String, usize)> {
-    let mut out = String::new();
-    let mut index = 1;
-    let bytes = text.as_bytes();
-    while index < bytes.len() {
-        match bytes[index] {
-            b'"' => return Some((out, index + 1)),
-            b'\\' => {
-                index += 1;
-                let escape = *bytes.get(index)?;
-                index += 1;
-                match escape {
-                    b'0' => out.push('\0'),
-                    b'a' => out.push('\u{7}'),
-                    b'b' => out.push('\u{8}'),
-                    b't' | b'\t' => out.push('\t'),
-                    b'n' => out.push('\n'),
-                    b'v' => out.push('\u{B}'),
-                    b'f' => out.push('\u{C}'),
-                    b'r' => out.push('\r'),
-                    b'e' => out.push('\u{1B}'),
-                    b'"' => out.push('"'),
-                    b'/' => out.push('/'),
-                    b'\\' => out.push('\\'),
-                    b'N' => out.push('\u{85}'),
-                    b'_' => out.push('\u{A0}'),
-                    b'L' => out.push('\u{2028}'),
-                    b'P' => out.push('\u{2029}'),
-                    b'x' | b'u' | b'U' => {
-                        let count = match escape {
-                            b'x' => 2,
-                            b'u' => 4,
-                            _ => 8,
-                        };
-                        let mut value: u32 = 0;
-                        for _ in 0..count {
-                            let digit = bytes.get(index)?;
-                            let digit = (*digit as char).to_digit(16)?;
-                            value = value * 16 + digit;
-                            index += 1;
-                        }
-                        out.push(char::from_u32(value)?);
-                    }
-                    _ => return None,
-                }
-            }
-            _ => {
-                let ch = text[index..].chars().next()?;
-                if (ch as u32) < 0x20 && ch != '\t' {
-                    return None;
-                }
-                out.push(ch);
-                index += ch.len_utf8();
-            }
-        }
+    match read_quoted_span(text, true) {
+        SpanRead::Closed(value, end) => Some((value, end)),
+        _ => None,
     }
-    None
 }
 
 fn check_trailing(text: &str) -> Option<()> {
@@ -3379,8 +3569,8 @@ fn parse_inline_node(
             Some(value)
         }
         '"' => {
-            let (value, end) = parse_double_quoted(text)?;
-            check_trailing(&text[end..])?;
+            let (value, rest) = read_block_quoted(text, cursor, true)?;
+            check_trailing(&rest)?;
             if tag.is_constructor() {
                 let converted = convert_tagged_scalar(tag, &value)?;
                 return Some(Built::converted(converted));
@@ -3388,8 +3578,8 @@ fn parse_inline_node(
             Some(Built::from_text(value))
         }
         '\'' => {
-            let (value, end) = parse_single_quoted(text)?;
-            check_trailing(&text[end..])?;
+            let (value, rest) = read_block_quoted(text, cursor, false)?;
+            check_trailing(&rest)?;
             if tag.is_constructor() {
                 let converted = convert_tagged_scalar(tag, &value)?;
                 return Some(Built::converted(converted));
@@ -4172,6 +4362,7 @@ impl<'a> FlowParser<'a> {
                         self.skip_separators();
                     }
                     let mut empty_explicit_key = false;
+                    let mut explicit_pair = false;
                     if alias_key.is_none()
                         && self.peek() == Some('?')
                         && matches!(
@@ -4179,6 +4370,7 @@ impl<'a> FlowParser<'a> {
                             Some(' ') | Some('}') | Some(',')
                         )
                     {
+                        explicit_pair = true;
                         // An explicit key opens with the
                         // question mark, the key node standing
                         // behind it, and an empty key standing
@@ -4233,6 +4425,13 @@ impl<'a> FlowParser<'a> {
                             '"' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_double_quoted(&text)?;
+                                if !explicit_pair && text.chars().take(end).any(|ch| ch == '\n') {
+                                    // A quoted scalar spanning
+                                    // lines standing as a compact
+                                    // flow key refuses, as the
+                                    // runtime refuses it.
+                                    return None;
+                                }
                                 self.pos += end;
                                 match &key_tag {
                                     KeyTag::Convert(tag) => {
@@ -4244,6 +4443,9 @@ impl<'a> FlowParser<'a> {
                             '\'' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_single_quoted(&text)?;
+                                if !explicit_pair && text.chars().take(end).any(|ch| ch == '\n') {
+                                    return None;
+                                }
                                 self.pos += end;
                                 match &key_tag {
                                     KeyTag::Convert(tag) => {
@@ -4477,123 +4679,15 @@ fn fold_flow_plain(raw: &str) -> String {
 }
 
 fn parse_flow_single_quoted(text: &str) -> Option<(String, usize)> {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out: Vec<char> = Vec::new();
-    let mut index = 1;
-    while index < chars.len() {
-        match chars[index] {
-            '\'' => {
-                if chars.get(index + 1) == Some(&'\'') {
-                    out.push('\'');
-                    index += 2;
-                    continue;
-                }
-                return Some((fold_quoted_chars(&out), index + 1));
-            }
-            ch => {
-                out.push(ch);
-                index += 1;
-            }
-        }
+    match read_quoted_span(text, false) {
+        SpanRead::Closed(value, end) => Some((value, text[..end].chars().count())),
+        _ => None,
     }
-    None
 }
 
 fn parse_flow_double_quoted(text: &str) -> Option<(String, usize)> {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out: Vec<char> = Vec::new();
-    let mut index = 1;
-    while index < chars.len() {
-        match chars[index] {
-            '"' => return Some((fold_quoted_chars(&out), index + 1)),
-            '\\' => {
-                index += 1;
-                let escape = *chars.get(index)?;
-                index += 1;
-                if escape == '\n' {
-                    // A broken line inside a double quoted
-                    // scalar joins with nothing standing.
-                    while matches!(chars.get(index), Some(' ' | '\t')) {
-                        index += 1;
-                    }
-                    continue;
-                }
-                let ch = match escape {
-                    '0' => '\0',
-                    'a' => '\u{7}',
-                    'b' => '\u{8}',
-                    't' | '\t' => '\t',
-                    'n' => '\n',
-                    'v' => '\u{B}',
-                    'f' => '\u{C}',
-                    'r' => '\r',
-                    'e' => '\u{1B}',
-                    '"' => '"',
-                    '/' => '/',
-                    '\\' => '\\',
-                    'N' => '\u{85}',
-                    '_' => '\u{A0}',
-                    'L' => '\u{2028}',
-                    'P' => '\u{2029}',
-                    'x' | 'u' | 'U' => {
-                        let count = match escape {
-                            'x' => 2,
-                            'u' => 4,
-                            _ => 8,
-                        };
-                        let mut value: u32 = 0;
-                        for _ in 0..count {
-                            let digit = chars.get(index)?;
-                            let digit = digit.to_digit(16)?;
-                            value = value * 16 + digit;
-                            index += 1;
-                        }
-                        char::from_u32(value)?
-                    }
-                    _ => return None,
-                };
-                out.push(ch);
-            }
-            ch => {
-                if (ch as u32) < 0x20 && ch != '\t' && ch != '\n' {
-                    return None;
-                }
-                out.push(ch);
-                index += 1;
-            }
-        }
+    match read_quoted_span(text, true) {
+        SpanRead::Closed(value, end) => Some((value, text[..end].chars().count())),
+        _ => None,
     }
-    None
-}
-
-/// Fold the line breaks gathered inside a quoted scalar that
-/// spans lines, as the folding of a plain scalar folds them.
-fn fold_quoted_chars(chars: &[char]) -> String {
-    let text: String = chars.iter().collect();
-    let mut out = String::new();
-    let mut first = true;
-    let mut pending_newlines = 0usize;
-    for chunk in text.split('\n') {
-        let trimmed = chunk.trim();
-        if trimmed.is_empty() {
-            pending_newlines += 1;
-            continue;
-        }
-        if !first {
-            if pending_newlines <= 1 {
-                out.push(' ');
-            } else {
-                out.push_str(&"\n".repeat(pending_newlines - 1));
-            }
-        } else if pending_newlines > 0 {
-            out.push_str(&"\n".repeat(pending_newlines));
-        }
-        out.push_str(trimmed);
-        first = false;
-        pending_newlines = 1;
-    }
-    if pending_newlines > 1 && !first {
-        out.push_str(&"\n".repeat(pending_newlines - 1));
-    }
-    out
 }

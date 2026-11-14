@@ -28218,6 +28218,1364 @@
     "expect": {
      "err": "ConstructorError"
     }
+   },
+   {
+    "name": "double quoted span as a block value",
+    "text": "key: \"first\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "single quoted span as a block value",
+    "text": "key: 'first\n  second'\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "double quoted span over three lines",
+    "text": "key: \"one\n  two\n  three\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "one two three"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span with a blank line folds to one break",
+    "text": "key: \"first\n\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          102,
+          105,
+          114,
+          115,
+          116,
+          10,
+          115,
+          101,
+          99,
+          111,
+          110,
+          100
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span with two blank lines folds to two breaks",
+    "text": "key: \"first\n\n\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          102,
+          105,
+          114,
+          115,
+          116,
+          10,
+          10,
+          115,
+          101,
+          99,
+          111,
+          110,
+          100
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span in a nested mapping value",
+    "text": "outer:\n  key: \"first\n    second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "outer"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "key"
+           },
+           {
+            "t": "str",
+            "v": "first second"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span as a sequence entry",
+    "text": "- \"one\n  two\"\n- three\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "one two"
+       },
+       {
+        "t": "str",
+        "v": "three"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "span in a mapping standing in a sequence entry",
+    "text": "- name: \"first\n    second\"\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "name"
+          },
+          {
+           "t": "str",
+           "v": "first second"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "span as the whole document",
+    "text": "\"first\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "str",
+      "v": "first second"
+     }
+    }
+   },
+   {
+    "name": "single quoted span as the whole document",
+    "text": "'first\n  second'\n",
+    "expect": {
+     "ok": {
+      "t": "str",
+      "v": "first second"
+     }
+    }
+   },
+   {
+    "name": "span as the value of an explicit pair",
+    "text": "? key\n: \"first\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored span binds its folded text",
+    "text": "key: &a \"first\n  second\"\nother: *a\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "tagged span reads under its tag",
+    "text": "key: !!str \"first\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pair after a span stands",
+    "text": "key: \"first\n  second\"\nnext: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "next"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "closing quote at the head of a line",
+    "text": "key: \"first\nsecond\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "key shaped line inside a span is content",
+    "text": "key: \"first\n  second: not a key\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second: not a key"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment shaped line inside a span is content",
+    "text": "key: \"first\n  # not a comment\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first # not a comment second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "break at the head of a span folds to a space",
+    "text": "key: \"\n  first\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": " first"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "breaks at the head of a span fold to one break",
+    "text": "key: \"\n\n  first\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          102,
+          105,
+          114,
+          115,
+          116
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "break at the tail of a span folds to a space",
+    "text": "key: \"first\n  \"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first "
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "breaks at both edges of a span",
+    "text": "key: \"\n\n  first\n\n\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          102,
+          105,
+          114,
+          115,
+          116,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span of one break reads as one space",
+    "text": "key: \"\n\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": " "
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span of two breaks reads as one break",
+    "text": "key: \"\n\n\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "backslash at the end of a line joins with nothing",
+    "text": "key: \"first\\\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "firstsecond"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "escaped break never folds",
+    "text": "key: \"a\\nb\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          97,
+          10,
+          98
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "escaped space at the edges of a span stands",
+    "text": "{\"k\": \"\\u0020ab\\u0020\"}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": " ab "
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "escaped tab beside a break stands",
+    "text": "key: \"a\\t\n  b\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          97,
+          9,
+          32,
+          98
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "backslash in a single quoted span is a letter",
+    "text": "key: 'first\\\n  second'\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first\\ second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "doubled quote across a span",
+    "text": "key: 'it''s\n  fine'\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "it's fine"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "carriage return span folds as a break",
+    "text": "key: \"first\r\n  second\"\r\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "tab at the head of a crossed line folds away",
+    "text": "key: \"first\n\tsecond\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "double quoted span in a flow mapping",
+    "text": "{\"k\": \"a\n  b\"}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "a b"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "single quoted span in a flow sequence",
+    "text": "- 'a\n  b'\n- c\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a b"
+       },
+       {
+        "t": "str",
+        "v": "c"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "span in a flow value in block position",
+    "text": "key: [\"first\n  second\"]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "str",
+           "v": "first second"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "break run at the head of a flow span",
+    "text": "{\"k\": \"\n\n  first\n\n\"}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          10,
+          102,
+          105,
+          114,
+          115,
+          116,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "escaped break in a flow span never folds",
+    "text": "{\"k\": \"a\\nb\"}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          97,
+          10,
+          98
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning double quoted explicit key",
+    "text": "? \"first\n  second\"\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "first second"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning single quoted explicit key",
+    "text": "? 'first\n  second'\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "first second"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "tagged spanning explicit key",
+    "text": "? !!str \"first\n  second\"\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "first second"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored spanning explicit key binds",
+    "text": "? &a \"first\n  second\"\n: value\nother: *a\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "first second"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning compact key refuses",
+    "text": "\"first\n  second\": value\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "spanning flow key refuses",
+    "text": "{\"first\n  second\": 1}\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "spanning single quoted flow key refuses",
+    "text": "{'first\n  second': 1}\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "unterminated double quoted span refuses",
+    "text": "key: \"first\n  second\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "unterminated single quoted span refuses",
+    "text": "key: 'first\n  second\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "word after the closing quote of a span refuses",
+    "text": "key: \"first\n  second\" junk\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "comment after the closing quote of a span stands",
+    "text": "key: \"first\n  second\" # note\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "marker at the head of a crossed line refuses",
+    "text": "a: \"x\n---\ny\"\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "end marker at the head of a crossed line refuses",
+    "text": "a: \"x\n...\ny\"\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "marker at the head of a crossed line in flow refuses",
+    "text": "{\"k\": \"x\n---\ny\"}\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "marker after an escaped break refuses",
+    "text": "a: \"x\\\n---\ny\"\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "indented marker line inside a span is content",
+    "text": "a: \"x\n  ---\n  y\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x --- y"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "marker shaped word inside a span is content",
+    "text": "a: \"x\n---x\ny\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x ---x y"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "marker on the opening line of a span is content",
+    "text": "a: \"---\ny\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "--- y"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator inside a span folds as a break",
+    "text": "key: \"a b\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "a b"
+        }
+       ]
+      ]
+     }
+    },
+    "port_stated": true
+   },
+   {
+    "name": "paragraph separator inside a span folds as a break",
+    "text": "key: \"a b\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "a b"
+        }
+       ]
+      ]
+     }
+    },
+    "port_stated": true
+   },
+   {
+    "name": "line separator in a flow span folds as a break",
+    "text": "{\"k\": \"a b\"}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "a b"
+        }
+       ]
+      ]
+     }
+    },
+    "port_stated": true
+   },
+   {
+    "name": "blank before a backslash break stands",
+    "text": "key: \"first \\\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "two backslash breaks join twice",
+    "text": "key: \"a\\\n  b\\\n  c\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "abc"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning key node on the following lines",
+    "text": "?\n  \"first\n  second\"\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "first second"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning single quoted key node on the following lines",
+    "text": "?\n  'first\n  second'\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "first second"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning explicit value on the following lines",
+    "text": "? key\n:\n  \"first\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "spanning key on a sequence entry line refuses",
+    "text": "- \"first\n  second\": v\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "comment only line inside a span is content",
+    "text": "key: \"first\n# comment\n  second\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "first # comment second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "span in a flow sequence in a flow mapping",
+    "text": "{\"k\": [\"a\n  b\"]}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "str",
+           "v": "a b"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "marker at the head of a crossed line in a single quoted span refuses",
+    "text": "a: 'x\n---\ny'\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "directive shaped line inside a span is content",
+    "text": "a: \"x\n%YAML 1.2\ny\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x %YAML 1.2 y"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "directive shaped line inside a single quoted span is content",
+    "text": "a: 'x\n%YAML 1.2\ny'\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x %YAML 1.2 y"
+        }
+       ]
+      ]
+     }
+    }
    }
   ],
   "yaml_strings": [
@@ -28471,6 +29829,34 @@
     "expect": {
      "str": "2026-10-14",
      "repr": "'2026-10-14'"
+    }
+   },
+   {
+    "text": "\"first\n  second\"\n",
+    "expect": {
+     "str": "first second",
+     "repr": "'first second'"
+    }
+   },
+   {
+    "text": "'first\n  second'\n",
+    "expect": {
+     "str": "first second",
+     "repr": "'first second'"
+    }
+   },
+   {
+    "text": "\"first\n\n  second\"\n",
+    "expect": {
+     "str": "first\nsecond",
+     "repr": "'first\\nsecond'"
+    }
+   },
+   {
+    "text": "\"\n\"\n",
+    "expect": {
+     "str": " ",
+     "repr": "' '"
     }
    }
   ],
