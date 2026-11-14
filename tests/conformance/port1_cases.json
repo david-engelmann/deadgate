@@ -4748,9 +4748,23 @@
    {
     "text": "{&a k: x}\n",
     "expect": {
-     "err": "port refusal"
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "x"
+        }
+       ]
+      ]
+     }
     },
-    "port_stated": true
+    "name": "anchor in front of a flow mapping key"
    },
    {
     "text": "{a: &x 1, b: *x}\n",
@@ -27245,44 +27259,129 @@
     }
    },
    {
-    "name": "anchored explicit key refuses",
+    "name": "anchored explicit key",
     "text": "? &a k\n: 1\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
-    "name": "tagged explicit key refuses",
+    "name": "tagged explicit key",
     "text": "? !!str k\n: 1\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
-    "name": "alias explicit key refuses",
+    "name": "alias explicit key",
     "text": "a: &x 1\n? *x\n: 2\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "int",
+         "v": "1"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
-    "name": "anchored key on following lines refuses",
+    "name": "anchored key on following lines",
     "text": "?\n  &a k\n: 1\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
-    "name": "alias key on following lines refuses",
+    "name": "alias key on following lines",
     "text": "a: &x 1\n?\n  *x\n: 2\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "int",
+         "v": "1"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
     "name": "str tag on following lines over an invalid date",
@@ -27405,6 +27504,719 @@
       "t": "str",
       "v": "2026-13-45"
      }
+    }
+   },
+   {
+    "name": "anchor in front of a block key",
+    "text": "&a key: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchor in front of a block key on a later pair",
+    "text": "a: 1\n&x b: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchor in front of a quoted key",
+    "text": "&a 'key': v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchor on a block key binds the key",
+    "text": "&a k: v\nother: *a\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "str",
+         "v": "k"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tag in front of a block key",
+    "text": "!!str 5: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "int tag over a quoted key",
+    "text": "!!int \"5\": v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "int",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "float tag in front of a block key",
+    "text": "!!float '1.5': v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "float",
+         "v": "1.5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "bool tag in front of a block key",
+    "text": "!!bool 'yes': v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "bool",
+         "v": true
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "null tag in front of a block key",
+    "text": "!!null 'x': v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "null"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "both properties in front of a block key",
+    "text": "!!str &a 5: v\nother: *a\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "str",
+         "v": "5"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "both properties in front of a block key swapped",
+    "text": "&a !!str 5: v\nother: *a\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "str",
+         "v": "5"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchor on the merge spelling is refused",
+    "text": "&a <<: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "anchor in front of a flow key after a comma",
+    "text": "{a: 1, &b k: v, x: *b}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "x"
+        },
+        {
+         "t": "str",
+         "v": "k"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "tag in front of a flow key",
+    "text": "{!!str 5: v}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow explicit key with an anchor",
+    "text": "{? &a k: v, x: *a}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "x"
+        },
+        {
+         "t": "str",
+         "v": "k"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow explicit key with a tag",
+    "text": "{? !!str 5: v}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored pair key in a flow sequence",
+    "text": "[{&a k: v}, *a]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "k"
+          },
+          {
+           "t": "str",
+           "v": "v"
+          }
+         ]
+        ]
+       },
+       {
+        "t": "str",
+        "v": "k"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "tagged pair key in a flow sequence",
+    "text": "[{!!str 5: v}]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "5"
+          },
+          {
+           "t": "str",
+           "v": "v"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "property in front of a block scalar explicit key",
+    "text": "? !!str |\n  k\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "strcp",
+         "v": [
+          107,
+          10
+         ]
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key anchor binds the key",
+    "text": "? &a k\n: v\nother: *a\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "str",
+         "v": "k"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias standing as a block key",
+    "text": "base: &a name\nother:\n  *a : v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "base"
+        },
+        {
+         "t": "str",
+         "v": "name"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "other"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "name"
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias standing as a flow key",
+    "text": "defs: &a name\nm: {*a : 1}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "defs"
+        },
+        {
+         "t": "str",
+         "v": "name"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "m"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "name"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias standing as a pair key in a flow sequence",
+    "text": "d: &x name\ns: [{*x : v}]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "d"
+        },
+        {
+         "t": "str",
+         "v": "name"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "s"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "obj",
+           "v": [
+            [
+             {
+              "t": "str",
+              "v": "name"
+             },
+             {
+              "t": "str",
+              "v": "v"
+             }
+            ]
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias to a collection standing as a key refuses",
+    "text": "base: &a [1, 2]\nother:\n  *a : v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "undefined alias standing as a key refuses",
+    "text": "m:\n  *nope : 1\n",
+    "expect": {
+     "err": "ComposerError"
+    }
+   },
+   {
+    "name": "duplicate formed by conversion",
+    "text": "5: a\n!!int \"5\": b\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "int",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "b"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tag key beside the plain key",
+    "text": "5: a\n!!str 5: b\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "int",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "a"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "5"
+        },
+        {
+         "t": "str",
+         "v": "b"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary tag in key position refuses",
+    "text": "!!binary k: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "seq tag on a scalar key refuses",
+    "text": "!!seq k: v\n",
+    "expect": {
+     "err": "ConstructorError"
     }
    }
   ],

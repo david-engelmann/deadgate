@@ -354,23 +354,8 @@ fn test_the_int_tag_on_a_block_scalar_converts_the_assembled_text() {
 // PORT4-9, the borders kept.
 
 #[test]
-fn test_an_anchor_in_key_position_is_refused() {
-    assert_eq!(reads("a: 1\n&x b: 2\n"), None);
-}
-
-#[test]
-fn test_a_tag_in_key_position_is_refused() {
-    assert_eq!(reads("{!!str k: v}\n"), None);
-}
-
-#[test]
 fn test_a_recursive_alias_is_refused() {
     assert_eq!(reads("a: &x [*x]\n"), None);
-}
-
-#[test]
-fn test_an_alias_in_key_position_is_refused() {
-    assert_eq!(reads("a: &x 1\n*x: 2\n"), None);
 }
 
 #[test]
