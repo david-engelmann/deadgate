@@ -29534,6 +29534,48 @@
     "expect": {
      "err": "ScannerError"
     }
+   },
+   {
+    "name": "directive shaped line inside a span is content",
+    "text": "a: \"x\n%YAML 1.2\ny\"\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x %YAML 1.2 y"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "directive shaped line inside a single quoted span is content",
+    "text": "a: 'x\n%YAML 1.2\ny'\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "x %YAML 1.2 y"
+        }
+       ]
+      ]
+     }
+    }
    }
   ],
   "yaml_strings": [

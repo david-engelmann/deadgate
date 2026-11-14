@@ -2373,7 +2373,7 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
         while let Some(found) = cursor.next_content(index) {
             let text = cursor.lines[found].text.clone();
             let column_zero = cursor.lines[found].indent == 0;
-            if column_zero && (text == "---" || text.starts_with("--- ") || text.starts_with('%')) {
+            if column_zero && (text == "---" || text.starts_with("--- ")) {
                 return None;
             }
             if column_zero && (text == "..." || text.starts_with("... ")) {

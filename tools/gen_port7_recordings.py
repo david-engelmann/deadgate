@@ -177,6 +177,8 @@ CORPUS = [
     ("spanning key on a sequence entry line refuses", '- "first\n  second": v\n'),
     ("comment only line inside a span is content", 'key: "first\n# comment\n  second"\n'),
     ("span in a flow sequence in a flow mapping", '{"k": ["a\n  b"]}\n'),
+    ("directive shaped line inside a span is content", 'a: "x\n%YAML 1.2\ny"\n'),
+    ("directive shaped line inside a single quoted span is content", "a: 'x\n%YAML 1.2\ny'\n"),
 ]
 
 # The port stated divergences of the amendment. Each entry is
