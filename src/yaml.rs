@@ -14,8 +14,8 @@
 //! key that is a container refused, and nesting bounded at
 //! 4000. Anchors and aliases and merge keys and tags stand
 //! read under the fourth slice inside its borders, properties
-//! standing in key position refused beyond the merge and
-//! non-specific tags, a tag outside the standing set refused,
+//! standing in key position read under the sixth slice inside
+//! its borders, a tag outside the standing set refused,
 //! and alias and merge expansion bounded at 4000 across one
 //! document. A scalar
 //! the resolver reads as a date or a timestamp whose value does
@@ -1304,12 +1304,29 @@ fn split_properties(text: &str, bindings: &HashMap<String, String>) -> PropSplit
 /// The standing a tag has in key position, where the merge
 /// tag merges and the non-specific tag reads as the plain
 /// key reads, every other tag refusing.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 enum KeyTag {
     None,
     NonSpecific,
     Merge,
+    Convert(Tag),
     Refuse,
+}
+
+/// The class a tag stands in when it stands in front of a
+/// key, the scalar tags standing as conversions the key
+/// scalar takes and the collection tags and the refused
+/// tags standing refused.
+fn key_tag_of(tag: &Tag) -> KeyTag {
+    match tag {
+        Tag::None => KeyTag::None,
+        Tag::NonSpecific => KeyTag::NonSpecific,
+        Tag::Merge => KeyTag::Merge,
+        Tag::Str | Tag::Int | Tag::Float | Tag::Bool | Tag::Null | Tag::Timestamp => {
+            KeyTag::Convert(tag.clone())
+        }
+        _ => KeyTag::Refuse,
+    }
 }
 
 struct KeyProps {
@@ -1331,12 +1348,7 @@ fn split_key_properties(text: &str, bindings: &HashMap<String, String>) -> KeySp
         PropSplit::None => KeySplit::None,
         PropSplit::Refuse => KeySplit::Refuse,
         PropSplit::Props(props, offset) => {
-            let tag = match props.tag {
-                Tag::None => KeyTag::None,
-                Tag::NonSpecific => KeyTag::NonSpecific,
-                Tag::Merge => KeyTag::Merge,
-                _ => KeyTag::Refuse,
-            };
+            let tag = key_tag_of(&props.tag);
             KeySplit::Props(
                 KeyProps {
                     anchor: props.anchor,
@@ -1354,11 +1366,34 @@ fn split_key_properties(text: &str, bindings: &HashMap<String, String>) -> KeySp
 fn mapping_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
     match split_key_properties(text, bindings) {
         KeySplit::Props(_, offset) => {
-            find_key_split(&text[offset..]).is_some() || explicit_opening(&text[offset..])
+            find_key_split(&text[offset..]).is_some()
+                || explicit_opening(&text[offset..])
+                || alias_key_shape(&text[offset..])
         }
-        KeySplit::None => find_key_split(text).is_some() || explicit_opening(text),
+        KeySplit::None => {
+            find_key_split(text).is_some() || explicit_opening(text) || alias_key_shape(text)
+        }
         KeySplit::Refuse => false,
     }
+}
+
+/// Whether a line's text opens a pair whose key is an alias,
+/// the alias token standing in front of the pair's colon.
+fn alias_key_shape(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if !trimmed.starts_with('*') {
+        return false;
+    }
+    let name_len = trimmed[1..]
+        .chars()
+        .take_while(|ch| is_anchor_char_char(*ch))
+        .map(char::len_utf8)
+        .sum::<usize>();
+    if name_len == 0 {
+        return false;
+    }
+    let after = trimmed[1 + name_len..].trim_start();
+    after.starts_with(':') && (after.len() == 1 || matches!(after.as_bytes()[1], b' ' | b'\t'))
 }
 
 /// Whether a line's text opens an explicit pair, the question
@@ -2554,14 +2589,29 @@ fn read_explicit_key_text(
         ),
         KeySplit::Props(props, offset) => (props, offset),
     };
-    if key_props.anchor.is_some() || key_props.tag == KeyTag::Refuse {
+    if key_props.tag == KeyTag::Refuse {
         return None;
     }
     let merge_tag = key_props.tag == KeyTag::Merge;
     let raw = text[key_offset..].trim_start();
     let first = raw.chars().next()?;
     if first == '*' {
-        return None;
+        // An alias standing as the key, a property standing
+        // in front of an alias refusing as it refuses in
+        // value position.
+        if key_props.anchor.is_some() || key_props.tag != KeyTag::None {
+            return None;
+        }
+        let name: String = raw[1..]
+            .chars()
+            .take_while(|ch| is_anchor_char_char(*ch))
+            .collect();
+        if name.is_empty() {
+            return None;
+        }
+        check_trailing(&raw[1 + name.len()..])?;
+        let key = read_alias_key(state, &name)?;
+        return Some((key, false));
     }
     let value = if first == '"' || first == '\'' {
         let trimmed = raw.trim();
@@ -2571,9 +2621,16 @@ fn read_explicit_key_text(
             parse_single_quoted(trimmed)?
         };
         check_trailing(&trimmed[end..])?;
-        YamlValue::Text(quoted)
+        match &key_props.tag {
+            KeyTag::Convert(tag) => convert_tagged_scalar(tag, &quoted)?,
+            _ => YamlValue::Text(quoted),
+        }
     } else if first == '|' || first == '>' || first == '[' || first == '{' {
-        parse_inline_value(raw, cursor, indent, indent, depth, state)?.value
+        let built = parse_inline_value(raw, cursor, indent, indent, depth, state)?;
+        match &key_props.tag {
+            KeyTag::Convert(tag) => apply_tag(tag, built)?.value,
+            _ => built.value,
+        }
     } else {
         let plain_text = cut_comment(raw).trim();
         if plain_text == "-"
@@ -2586,10 +2643,19 @@ fn read_explicit_key_text(
             // refuses, as the runtime's unhashable key dies.
             return None;
         }
-        parse_key_scalar(plain_text)?
+        match &key_props.tag {
+            KeyTag::Convert(tag) => convert_tagged_scalar(tag, plain_text)?,
+            _ => parse_key_scalar(plain_text)?,
+        }
     };
-    let plain_merge =
-        merge_tag || (first != '"' && first != '\'' && cut_comment(raw).trim() == "<<");
+    let plain_merge = merge_tag
+        || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific)
+            && first != '"'
+            && first != '\''
+            && cut_comment(raw).trim() == "<<");
+    if let Some(name) = &key_props.anchor {
+        bind_key_anchor(state, name, &value)?;
+    }
     let key = YamlKey::of(&value)?;
     Some((key, plain_merge))
 }
@@ -2662,11 +2728,9 @@ fn parse_mapping(
                         // The key node standing on the
                         // following lines stands under the
                         // standings of key position as the key
-                        // on the question mark line does, an
-                        // anchor or a disallowed tag or an
-                        // alias refusing.
+                        // on the question mark line does.
                         let next_text = cursor.lines[nj].text.clone();
-                        let (next_props, next_offset) =
+                        let (_next_props, next_offset) =
                             match split_key_properties(&next_text, &state.bindings) {
                                 KeySplit::Refuse => return None,
                                 KeySplit::None => (
@@ -2678,14 +2742,21 @@ fn parse_mapping(
                                 ),
                                 KeySplit::Props(props, offset) => (props, offset),
                             };
-                        if next_props.anchor.is_some() || next_props.tag == KeyTag::Refuse {
-                            return None;
-                        }
                         let after_next = next_text[next_offset..].trim_start();
-                        if after_next.starts_with('*') {
-                            return None;
-                        }
-                        if next_offset > 0 {
+                        if after_next.starts_with('*') && next_offset == 0 {
+                            // An alias standing as the key on
+                            // the following lines.
+                            let name: String = after_next[1..]
+                                .chars()
+                                .take_while(|ch| is_anchor_char_char(*ch))
+                                .collect();
+                            if name.is_empty() {
+                                return None;
+                            }
+                            check_trailing(&after_next[1 + name.len()..])?;
+                            cursor.pos = nj + 1;
+                            (read_alias_key(state, &name)?, false)
+                        } else if next_offset > 0 {
                             // Properties standing on the key
                             // line send the key through the key
                             // path, where the merge spelling
@@ -2749,34 +2820,50 @@ fn parse_mapping(
             }
             continue;
         }
-        let first_pair = explicit.is_empty() && merge_sources.is_empty();
-        if key_props.anchor.is_some() && !first_pair {
-            return None;
-        }
-        let (key_raw, rest_start) = find_key_split(&line.text[key_offset..])?;
-        let rest_start = key_offset + rest_start;
-        let key_value = parse_key_scalar(&key_raw)?;
-        if let Some(name) = &key_props.anchor {
-            // The anchor standing in front of a block mapping
-            // binds the first key scalar of the mapping, not
-            // the mapping itself, and a name bound anywhere in
-            // the document refuses a second binding.
-            if state.bound.contains_key(name) || state.building.contains(name) {
+        let after_props = &line.text[key_offset..];
+        let (key, merge_key, rest) = if after_props.trim_start().starts_with('*') {
+            // An alias standing as a compact key, a property
+            // standing in front of an alias refusing as it
+            // refuses in value position.
+            if key_props.anchor.is_some() || key_props.tag != KeyTag::None {
                 return None;
             }
-            state.bound.insert(
-                name.clone(),
-                AnchorVal {
-                    value: key_value.clone(),
-                    tally: 0,
-                    items: None,
-                },
-            );
-        }
-        let key = YamlKey::of(&key_value)?;
-        let merge_key = key_props.tag == KeyTag::Merge
-            || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific) && key_raw == "<<");
-        let rest = line.text[rest_start..].trim_start().to_string();
+            let trimmed = after_props.trim_start();
+            let name: String = trimmed[1..]
+                .chars()
+                .take_while(|ch| is_anchor_char_char(*ch))
+                .collect();
+            if name.is_empty() {
+                return None;
+            }
+            let after_name = trimmed[1 + name.len()..].trim_start();
+            if !after_name.starts_with(':') {
+                return None;
+            }
+            if after_name.len() > 1 && !matches!(after_name.as_bytes()[1], b' ' | b'\t') {
+                return None;
+            }
+            let key = read_alias_key(state, &name)?;
+            (key, false, after_name[1..].trim_start().to_string())
+        } else {
+            let (key_raw, rest_start) = find_key_split(after_props)?;
+            let rest_start = key_offset + rest_start;
+            let key_value = read_key_scalar(&key_raw, &key_props.tag)?;
+            if let Some(name) = &key_props.anchor {
+                // The anchor standing in front of a key binds
+                // the key scalar, not the mapping the pair
+                // stands in.
+                bind_key_anchor(state, name, &key_value)?;
+            }
+            let key = YamlKey::of(&key_value)?;
+            let merge_key = key_props.tag == KeyTag::Merge
+                || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific) && key_raw == "<<");
+            (
+                key,
+                merge_key,
+                line.text[rest_start..].trim_start().to_string(),
+            )
+        };
         cursor.pos = li + 1;
         let value = if rest.is_empty() || rest.starts_with('#') {
             following_block_value(cursor, indent, depth, state, &Tag::None)?
@@ -2973,6 +3060,62 @@ fn plain_key_stands(key: &str) -> bool {
         return false;
     }
     true
+}
+
+/// Read a key scalar under the tag class standing in front
+/// of it, a conversion tag converting the scalar's own text
+/// as it converts a value's text under PORT4-6 and every
+/// other standing class reading the scalar as it reads
+/// without one.
+fn read_key_scalar(raw: &str, tag: &KeyTag) -> Option<YamlValue> {
+    match tag {
+        KeyTag::Convert(tag) => {
+            let text = if let Some(stripped) = raw.strip_prefix('\"') {
+                let _ = stripped;
+                parse_double_quoted(raw)?.0
+            } else if raw.starts_with('\'') {
+                parse_single_quoted(raw)?.0
+            } else {
+                raw.trim().to_string()
+            };
+            convert_tagged_scalar(tag, &text)
+        }
+        KeyTag::Refuse => None,
+        _ => parse_key_scalar(raw),
+    }
+}
+
+/// Bind an anchor name to a key value in the anchor table,
+/// a name bound anywhere in the document or still building
+/// refusing a second binding.
+fn bind_key_anchor(state: &mut ReadState, name: &str, value: &YamlValue) -> Option<()> {
+    if state.bound.contains_key(name) || state.building.contains(name) {
+        return None;
+    }
+    state.bound.insert(
+        name.to_string(),
+        AnchorVal {
+            value: value.clone(),
+            tally: 0,
+            items: None,
+        },
+    );
+    Some(())
+}
+
+/// Read an alias standing where a key stands, the resolved
+/// node standing as the key where it is a scalar. The merge
+/// spelling standing as the resolved text refuses, as the
+/// runtime dies on the plain anchored spelling in its
+/// constructor, and the quoted anchored spelling standing
+/// behind the same text is not told apart here, a narrow
+/// stated limit of this slice.
+fn read_alias_key(state: &mut ReadState, name: &str) -> Option<YamlKey> {
+    let built = state.resolve_alias(name)?;
+    if matches!(&built.value, YamlValue::Text(text) if text == "<<") {
+        return None;
+    }
+    YamlKey::of(&built.value)
 }
 
 fn parse_key_scalar(raw: &str) -> Option<YamlValue> {
@@ -3813,15 +3956,53 @@ impl<'a> FlowParser<'a> {
         resolve_tag_spelling(&token, &self.state.bindings)
     }
 
-    /// Take the one tag token a flow key can carry, the merge
-    /// tag and the non-specific tag standing and every other
-    /// tag refusing.
+    /// Take the one tag token a flow key can carry, under
+    /// the classes key position allows.
     fn take_key_tag(&mut self) -> Option<KeyTag> {
-        match self.take_tag_token()? {
-            Tag::Merge => Some(KeyTag::Merge),
-            Tag::NonSpecific => Some(KeyTag::NonSpecific),
-            _ => None,
+        match key_tag_of(&self.take_tag_token()?) {
+            KeyTag::Refuse => None,
+            tag => Some(tag),
         }
+    }
+
+    /// Take the properties standing in front of a flow key,
+    /// at most one anchor and at most one tag in either
+    /// order, under the classes key position allows.
+    fn take_key_properties(&mut self) -> Option<(Option<String>, KeyTag)> {
+        let mut anchor: Option<String> = None;
+        let mut tag = KeyTag::None;
+        loop {
+            match self.peek()? {
+                '&' => {
+                    if anchor.is_some() {
+                        return None;
+                    }
+                    let start = self.pos + 1;
+                    let mut end = start;
+                    while end < self.chars.len() && is_anchor_char_char(self.chars[end]) {
+                        end += 1;
+                    }
+                    if end == start {
+                        return None;
+                    }
+                    match self.chars.get(end) {
+                        None | Some(' ' | '\t' | '\n' | '\r' | ',' | ']' | '}' | ':') => {}
+                        _ => return None,
+                    }
+                    anchor = Some(self.chars[start..end].iter().collect());
+                    self.pos = end;
+                }
+                '!' => {
+                    if tag != KeyTag::None {
+                        return None;
+                    }
+                    tag = self.take_key_tag()?;
+                }
+                _ => break,
+            }
+            self.skip_separators();
+        }
+        Some((anchor, tag))
     }
 
     fn parse_value(&mut self, depth: usize) -> Option<Built> {
@@ -3909,7 +4090,8 @@ impl<'a> FlowParser<'a> {
                                 tag_done: false,
                             }
                         } else {
-                            if item_anchor || !matches!(item_tag, Tag::None | Tag::NonSpecific) {
+                            let _ = item_anchor;
+                            if matches!(item_tag, Tag::Seq | Tag::Map | Tag::Refuse) {
                                 return None;
                             }
                             let key = YamlKey::of(&item.value)?;
@@ -3955,23 +4137,43 @@ impl<'a> FlowParser<'a> {
                         break;
                     }
                     // The key stands read by a scalar path of
-                    // its own that no property reaches, an
-                    // anchor or an alias in front of it
-                    // refusing and a tag standing only as the
-                    // merge tag or the non-specific tag.
-                    if self.peek() == Some('&') || self.peek() == Some('*') {
-                        return None;
-                    }
-                    let mut key_tag = KeyTag::None;
-                    if self.peek() == Some('!') {
-                        key_tag = self.take_key_tag()?;
-                        self.skip_separators();
-                        if self.peek() == Some('&') || self.peek() == Some('*') {
+                    // its own, the properties in front of it
+                    // standing under the classes key position
+                    // allows, an anchor binding the key node
+                    // and a conversion tag converting the key
+                    // scalar and an alias standing as the key.
+                    let (mut key_anchor, mut key_tag) =
+                        if matches!(self.peek(), Some('&') | Some('!')) {
+                            self.take_key_properties()?
+                        } else {
+                            (None, KeyTag::None)
+                        };
+                    self.skip_separators();
+                    let mut alias_key: Option<YamlKey> = None;
+                    if self.peek() == Some('*') {
+                        // An alias standing as the key, a
+                        // property in front of an alias
+                        // refusing as it refuses in value
+                        // position.
+                        if key_anchor.is_some() || key_tag != KeyTag::None {
                             return None;
                         }
+                        let start = self.pos + 1;
+                        let mut end = start;
+                        while end < self.chars.len() && is_anchor_char_char(self.chars[end]) {
+                            end += 1;
+                        }
+                        if end == start {
+                            return None;
+                        }
+                        let name: String = self.chars[start..end].iter().collect();
+                        self.pos = end;
+                        alias_key = Some(read_alias_key(self.state, &name)?);
+                        self.skip_separators();
                     }
                     let mut empty_explicit_key = false;
-                    if self.peek() == Some('?')
+                    if alias_key.is_none()
+                        && self.peek() == Some('?')
                         && matches!(
                             self.chars.get(self.pos + 1),
                             Some(' ') | Some('}') | Some(',')
@@ -3981,28 +4183,50 @@ impl<'a> FlowParser<'a> {
                         // question mark, the key node standing
                         // behind it, and an empty key standing
                         // when the pair or the mapping closes
-                        // at once behind the mark.
+                        // at once behind the mark. The key's
+                        // properties stand behind the marker as
+                        // they stand in front of a compact key,
+                        // under the same classes.
                         self.pos += 1;
                         self.skip_separators();
-                        if self.peek() == Some('&') || self.peek() == Some('*') {
-                            return None;
-                        }
-                        if self.peek() == Some('!') {
-                            // A key tag stands behind the
-                            // marker as it stands in front of a
-                            // compact key, under the same
-                            // classes.
-                            key_tag = self.take_key_tag()?;
+                        if matches!(self.peek(), Some('&') | Some('!')) {
+                            let (more_anchor, more_tag) = self.take_key_properties()?;
+                            if more_anchor.is_some() {
+                                if key_anchor.is_some() {
+                                    return None;
+                                }
+                                key_anchor = more_anchor;
+                            }
+                            if more_tag != KeyTag::None {
+                                if key_tag != KeyTag::None {
+                                    return None;
+                                }
+                                key_tag = more_tag;
+                            }
                             self.skip_separators();
-                            if self.peek() == Some('&') || self.peek() == Some('*') {
+                        }
+                        if self.peek() == Some('*') {
+                            if key_anchor.is_some() || key_tag != KeyTag::None {
                                 return None;
                             }
+                            let start = self.pos + 1;
+                            let mut end = start;
+                            while end < self.chars.len() && is_anchor_char_char(self.chars[end]) {
+                                end += 1;
+                            }
+                            if end == start {
+                                return None;
+                            }
+                            let name: String = self.chars[start..end].iter().collect();
+                            self.pos = end;
+                            alias_key = Some(read_alias_key(self.state, &name)?);
+                            self.skip_separators();
                         }
                         if matches!(self.peek(), Some('}') | Some(',')) {
                             empty_explicit_key = true;
                         }
                     }
-                    let (key_value, key_plain) = if empty_explicit_key {
+                    let (key_value, key_plain) = if alias_key.is_some() || empty_explicit_key {
                         (YamlValue::Null, None)
                     } else {
                         match self.peek()? {
@@ -4010,30 +4234,53 @@ impl<'a> FlowParser<'a> {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_double_quoted(&text)?;
                                 self.pos += end;
-                                (YamlValue::Text(value), None)
+                                match &key_tag {
+                                    KeyTag::Convert(tag) => {
+                                        (convert_tagged_scalar(tag, &value)?, None)
+                                    }
+                                    _ => (YamlValue::Text(value), None),
+                                }
                             }
                             '\'' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_single_quoted(&text)?;
                                 self.pos += end;
-                                (YamlValue::Text(value), None)
+                                match &key_tag {
+                                    KeyTag::Convert(tag) => {
+                                        (convert_tagged_scalar(tag, &value)?, None)
+                                    }
+                                    _ => (YamlValue::Text(value), None),
+                                }
                             }
                             '[' | '{' => {
                                 let built = self.parse_value(depth + 1)?;
-                                (built.value, None)
+                                match &key_tag {
+                                    KeyTag::Convert(tag) => (apply_tag(tag, built)?.value, None),
+                                    _ => (built.value, None),
+                                }
                             }
                             ',' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => return None,
                             _ => {
                                 let folded = self.scan_plain_token()?;
-                                let plain = if folded == "<<" {
-                                    Some(folded.clone())
-                                } else {
-                                    None
-                                };
-                                (resolve_plain_scalar(&folded)?, plain)
+                                match &key_tag {
+                                    KeyTag::Convert(tag) => {
+                                        (convert_tagged_scalar(tag, &folded)?, None)
+                                    }
+                                    _ => {
+                                        let plain = if folded == "<<" {
+                                            Some(folded.clone())
+                                        } else {
+                                            None
+                                        };
+                                        (resolve_plain_scalar(&folded)?, plain)
+                                    }
+                                }
                             }
                         }
                     };
+                    if let Some(name) = &key_anchor {
+                        bind_key_anchor(self.state, name, &key_value)?;
+                    }
                     self.skip_separators();
                     let merge_key = key_tag == KeyTag::Merge
                         || (matches!(key_tag, KeyTag::None | KeyTag::NonSpecific)
@@ -4060,7 +4307,10 @@ impl<'a> FlowParser<'a> {
                     if merge_key {
                         merge_sources.push(value);
                     } else {
-                        let key = YamlKey::of(&key_value)?;
+                        let key = match &alias_key {
+                            Some(key) => key.clone(),
+                            None => YamlKey::of(&key_value)?,
+                        };
                         explicit.push((key, value));
                     }
                     self.skip_separators();

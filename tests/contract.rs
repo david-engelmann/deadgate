@@ -99,7 +99,7 @@ fn test_every_contract_name_is_disposed() {
     let names = contract_names();
     assert_eq!(
         names.len(),
-        205,
+        225,
         "the contract carries the census of names this slice disposes"
     );
     let map = read_repo_file("tests/contract_name_map.txt");
