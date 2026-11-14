@@ -128,11 +128,15 @@ CORPUS = [
     ("block scalar folded explicit key", "? >\n  x\n: 1\n"),
     ("explicit key with a block scalar value", "? k\n: |\n  body\n"),
     ("explicit key in a sequence mapping", "- ? k\n  : v\n"),
+    ("explicit quoted key with a trailing comment", "? \"key\" # note\n: 1\n"),
+    ("colon joined explicit key", "? :foo\n: value\n"),
+    ("merge tag on a following lines key", "s: &s {n: 1}\n?\n  !!merge <<\n: *s\n"),
     # 2. Explicit keys in flow mappings.
     ("flow explicit key", "{? key: value}\n"),
     ("flow explicit pair beside compact pairs", "{a: 1, ? b: 2}\n"),
     ("flow explicit key with no colon", "{? a}\n"),
     ("flow bare question mark", "{?}\n"),
+    ("flow explicit key with a non-specific tag", "{? ! key: value}\n"),
     # 3. The refusals of the family.
     ("collection explicit key refuses", "? [a, b]\n: 1\n"),
     ("flow collection explicit key refuses", "{? [a]: 1}\n"),
@@ -144,6 +148,8 @@ CORPUS = [
     ("anchored explicit key refuses", "? &a k\n: 1\n"),
     ("tagged explicit key refuses", "? !!str k\n: 1\n"),
     ("alias explicit key refuses", "a: &x 1\n? *x\n: 2\n"),
+    ("anchored key on following lines refuses", "?\n  &a k\n: 1\n"),
+    ("alias key on following lines refuses", "a: &x 1\n?\n  *x\n: 2\n"),
     # 4. The tag repair, a tag converting its scalar from the
     # scalar's own text on the following lines path.
     ("str tag on following lines over an invalid date", "key: !!str\n  2026-13-45\n"),
@@ -164,6 +170,8 @@ PORT_REFUSALS = {
     "anchored explicit key refuses",
     "tagged explicit key refuses",
     "alias explicit key refuses",
+    "anchored key on following lines refuses",
+    "alias key on following lines refuses",
 }
 
 

@@ -27000,6 +27000,90 @@
     }
    },
    {
+    "name": "explicit quoted key with a trailing comment",
+    "text": "? \"key\" # note\n: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "colon joined explicit key",
+    "text": "? :foo\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": ":foo"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tag on a following lines key",
+    "text": "s: &s {n: 1}\n?\n  !!merge <<\n: *s\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "n"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "s"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "n"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
     "name": "flow explicit key",
     "text": "{? key: value}\n",
     "expect": {
@@ -27091,6 +27175,27 @@
     }
    },
    {
+    "name": "flow explicit key with a non-specific tag",
+    "text": "{? ! key: value}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
     "name": "collection explicit key refuses",
     "text": "? [a, b]\n: 1\n",
     "expect": {
@@ -27158,6 +27263,22 @@
    {
     "name": "alias explicit key refuses",
     "text": "a: &x 1\n? *x\n: 2\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "anchored key on following lines refuses",
+    "text": "?\n  &a k\n: 1\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "alias key on following lines refuses",
+    "text": "a: &x 1\n?\n  *x\n: 2\n",
     "expect": {
      "err": "port refusal"
     },

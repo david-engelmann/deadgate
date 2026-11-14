@@ -2564,7 +2564,14 @@ fn read_explicit_key_text(
         return None;
     }
     let value = if first == '"' || first == '\'' {
-        parse_key_scalar(raw.trim())?
+        let trimmed = raw.trim();
+        let (quoted, end) = if first == '"' {
+            parse_double_quoted(trimmed)?
+        } else {
+            parse_single_quoted(trimmed)?
+        };
+        check_trailing(&trimmed[end..])?;
+        YamlValue::Text(quoted)
     } else if first == '|' || first == '>' || first == '[' || first == '{' {
         parse_inline_value(raw, cursor, indent, indent, depth, state)?.value
     } else {
@@ -2645,16 +2652,52 @@ fn parse_mapping(
             }
             let merge_tag = key_props.tag == KeyTag::Merge;
             let key_text = after_props[1..].trim_start();
-            if key_text.starts_with(':') {
+            if colon_opening(key_text) {
                 return None;
             }
             cursor.pos = li + 1;
             let (key, plain_merge) = if key_text.is_empty() {
                 match cursor.peek_content() {
                     Some(nj) if cursor.lines[nj].indent > indent => {
-                        let line_merge = cursor.lines[nj].text.trim() == "<<";
-                        let built = parse_block(cursor, indent, depth + 1, state)?;
-                        (YamlKey::of(&built.value)?, line_merge)
+                        // The key node standing on the
+                        // following lines stands under the
+                        // standings of key position as the key
+                        // on the question mark line does, an
+                        // anchor or a disallowed tag or an
+                        // alias refusing.
+                        let next_text = cursor.lines[nj].text.clone();
+                        let (next_props, next_offset) =
+                            match split_key_properties(&next_text, &state.bindings) {
+                                KeySplit::Refuse => return None,
+                                KeySplit::None => (
+                                    KeyProps {
+                                        anchor: None,
+                                        tag: KeyTag::None,
+                                    },
+                                    0,
+                                ),
+                                KeySplit::Props(props, offset) => (props, offset),
+                            };
+                        if next_props.anchor.is_some() || next_props.tag == KeyTag::Refuse {
+                            return None;
+                        }
+                        let after_next = next_text[next_offset..].trim_start();
+                        if after_next.starts_with('*') {
+                            return None;
+                        }
+                        if next_offset > 0 {
+                            // Properties standing on the key
+                            // line send the key through the key
+                            // path, where the merge spelling
+                            // stands as a key and never meets
+                            // the value position refusal.
+                            cursor.pos = nj + 1;
+                            read_explicit_key_text(&next_text, cursor, indent, depth + 1, state)?
+                        } else {
+                            let line_merge = after_next.trim() == "<<";
+                            let built = parse_block(cursor, indent, depth + 1, state)?;
+                            (YamlKey::of(&built.value)?, line_merge)
+                        }
                     }
                     _ => (YamlKey::Null, false),
                 }
@@ -3941,6 +3984,20 @@ impl<'a> FlowParser<'a> {
                         // at once behind the mark.
                         self.pos += 1;
                         self.skip_separators();
+                        if self.peek() == Some('&') || self.peek() == Some('*') {
+                            return None;
+                        }
+                        if self.peek() == Some('!') {
+                            // A key tag stands behind the
+                            // marker as it stands in front of a
+                            // compact key, under the same
+                            // classes.
+                            key_tag = self.take_key_tag()?;
+                            self.skip_separators();
+                            if self.peek() == Some('&') || self.peek() == Some('*') {
+                                return None;
+                            }
+                        }
                         if matches!(self.peek(), Some('}') | Some(',')) {
                             empty_explicit_key = true;
                         }
