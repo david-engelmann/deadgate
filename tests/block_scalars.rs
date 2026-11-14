@@ -350,7 +350,12 @@ fn test_a_block_head_in_flow_position_is_refused() {
 
 #[test]
 fn test_a_block_scalar_as_a_key_is_refused() {
-    assert_eq!(reads("? |\n  x\n: 1\n"), None);
+    // The refusal that stands after slice 5 is the block head
+    // in compact key position, its colon standing on the head
+    // line, where the runtime dies in its scanner. The block
+    // scalar standing as an explicit key reads under PORT5-3
+    // and is pinned there.
+    assert_eq!(reads("|: 1\n"), None);
 }
 
 #[test]

@@ -1353,10 +1353,18 @@ fn split_key_properties(text: &str, bindings: &HashMap<String, String>) -> KeySp
 /// of the key.
 fn mapping_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
     match split_key_properties(text, bindings) {
-        KeySplit::Props(_, offset) => find_key_split(&text[offset..]).is_some(),
-        KeySplit::None => find_key_split(text).is_some(),
+        KeySplit::Props(_, offset) => {
+            find_key_split(&text[offset..]).is_some() || explicit_opening(&text[offset..])
+        }
+        KeySplit::None => find_key_split(text).is_some() || explicit_opening(text),
         KeySplit::Refuse => false,
     }
+}
+
+/// Whether a line's text opens an explicit pair, the question
+/// mark standing alone on the line or in front of a space.
+fn explicit_opening(text: &str) -> bool {
+    text == "?" || text.starts_with("? ")
 }
 
 /// A decimal integer in text form, a sign and the digits
@@ -2375,6 +2383,44 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     Some(value)
 }
 
+/// Read the block standing on the following lines under a
+/// tag the caller holds, the tag reaching a bare scalar node
+/// standing there so the scalar converts from its own text
+/// under the tag, and every other node shape reading exactly
+/// as parse_block reads it, the tag settling on the built
+/// node in the caller's finish.
+fn parse_block_tagged(
+    cursor: &mut Cursor,
+    parent_indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+    tag: &Tag,
+) -> Option<Built> {
+    let li = cursor.peek_content()?;
+    let line = cursor.lines[li].clone();
+    if line.text.starts_with('\t') {
+        return None;
+    }
+    let bare_scalar = matches!(
+        split_properties(&line.text, &state.bindings),
+        PropSplit::None
+    ) && !is_dash_line(&line)
+        && !mapping_shape(&line.text, &state.bindings);
+    if !bare_scalar {
+        return parse_block(cursor, parent_indent, depth, state);
+    }
+    cursor.pos = li + 1;
+    parse_inline_node(
+        &line.text,
+        cursor,
+        line.indent,
+        parent_indent,
+        depth,
+        state,
+        tag,
+    )
+}
+
 fn parse_block(
     cursor: &mut Cursor,
     parent_indent: usize,
@@ -2402,7 +2448,8 @@ fn parse_block(
                 if let Some(name) = &props.anchor {
                     state.mark(name)?;
                 }
-                let built = read_following_block(cursor, &line, parent_indent, depth, state)?;
+                let built =
+                    read_following_block(cursor, &line, parent_indent, depth, state, &props.tag)?;
                 return finish_props(state, props, built);
             }
         }
@@ -2430,6 +2477,7 @@ fn read_following_block(
     parent_indent: usize,
     depth: usize,
     state: &mut ReadState,
+    tag: &Tag,
 ) -> Option<Built> {
     let Some(nj) = cursor.peek_content() else {
         return Some(Built::empty_scalar());
@@ -2438,7 +2486,7 @@ fn read_following_block(
     if next.indent == line.indent && is_dash_line(&next) {
         parse_sequence(cursor, next.indent, depth + 1, state)
     } else if next.indent >= line.indent || next.indent > parent_indent {
-        parse_block(cursor, parent_indent, depth + 1, state)
+        parse_block_tagged(cursor, parent_indent, depth + 1, state, tag)
     } else {
         Some(Built::empty_scalar())
     }
@@ -2453,13 +2501,14 @@ fn following_block_value(
     indent: usize,
     depth: usize,
     state: &mut ReadState,
+    tag: &Tag,
 ) -> Option<Built> {
     match cursor.peek_content() {
         None => Some(Built::empty_scalar()),
         Some(nj) => {
             let next = cursor.lines[nj].clone();
             if next.indent > indent {
-                parse_block(cursor, indent, depth + 1, state)
+                parse_block_tagged(cursor, indent, depth + 1, state, tag)
             } else if next.indent == indent && is_dash_line(&next) {
                 parse_sequence(cursor, indent, depth + 1, state)
             } else {
@@ -2467,6 +2516,82 @@ fn following_block_value(
             }
         }
     }
+}
+
+/// Whether a line's text opens the value half of an explicit
+/// pair, the colon standing alone on the line or in front of
+/// a space.
+fn colon_opening(text: &str) -> bool {
+    text == ":" || text.starts_with(": ")
+}
+
+/// Read the key node standing on an explicit pair's question
+/// mark line, under the standings of key position. An anchor
+/// standing on the key refuses, and a tag stands only as the
+/// merge tag or the non-specific tag, and an alias refuses.
+/// The node itself reads as the standing key path reads it, a
+/// plain or quoted scalar through the key scalar reading and
+/// a block scalar or a flow node through the inline reading,
+/// a collection standing as the key refusing as the runtime's
+/// unhashable key dies. Hands back the key and whether the
+/// pair merges, the merge standing on the merge tag or on the
+/// plain merge spelling standing as the node's own text.
+fn read_explicit_key_text(
+    text: &str,
+    cursor: &mut Cursor,
+    indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<(YamlKey, bool)> {
+    let (key_props, key_offset) = match split_key_properties(text, &state.bindings) {
+        KeySplit::Refuse => return None,
+        KeySplit::None => (
+            KeyProps {
+                anchor: None,
+                tag: KeyTag::None,
+            },
+            0,
+        ),
+        KeySplit::Props(props, offset) => (props, offset),
+    };
+    if key_props.anchor.is_some() || key_props.tag == KeyTag::Refuse {
+        return None;
+    }
+    let merge_tag = key_props.tag == KeyTag::Merge;
+    let raw = text[key_offset..].trim_start();
+    let first = raw.chars().next()?;
+    if first == '*' {
+        return None;
+    }
+    let value = if first == '"' || first == '\'' {
+        let trimmed = raw.trim();
+        let (quoted, end) = if first == '"' {
+            parse_double_quoted(trimmed)?
+        } else {
+            parse_single_quoted(trimmed)?
+        };
+        check_trailing(&trimmed[end..])?;
+        YamlValue::Text(quoted)
+    } else if first == '|' || first == '>' || first == '[' || first == '{' {
+        parse_inline_value(raw, cursor, indent, indent, depth, state)?.value
+    } else {
+        let plain_text = cut_comment(raw).trim();
+        if plain_text == "-"
+            || plain_text.starts_with("- ")
+            || mapping_shape(plain_text, &state.bindings)
+        {
+            // A dash opening or a mapping standing on the
+            // question mark line opens a collection as the
+            // key node, and a collection standing as a key
+            // refuses, as the runtime's unhashable key dies.
+            return None;
+        }
+        parse_key_scalar(plain_text)?
+    };
+    let plain_merge =
+        merge_tag || (first != '"' && first != '\'' && cut_comment(raw).trim() == "<<");
+    let key = YamlKey::of(&value)?;
+    Some((key, plain_merge))
 }
 
 fn parse_mapping(
@@ -2514,6 +2639,116 @@ fn parse_mapping(
         if key_props.tag == KeyTag::Refuse {
             return None;
         }
+        let after_props = &line.text[key_offset..];
+        if explicit_opening(after_props) {
+            // An explicit pair. The key node stands on the
+            // question mark line or on the lines behind a bare
+            // mark, and the value stands behind the colon line
+            // at the mapping's own indent, a pair whose colon
+            // line never stands holding a null value, as the
+            // runtime reads it.
+            if key_props.anchor.is_some() {
+                return None;
+            }
+            let merge_tag = key_props.tag == KeyTag::Merge;
+            let key_text = after_props[1..].trim_start();
+            if colon_opening(key_text) {
+                return None;
+            }
+            cursor.pos = li + 1;
+            let (key, plain_merge) = if key_text.is_empty() {
+                match cursor.peek_content() {
+                    Some(nj) if cursor.lines[nj].indent > indent => {
+                        // The key node standing on the
+                        // following lines stands under the
+                        // standings of key position as the key
+                        // on the question mark line does, an
+                        // anchor or a disallowed tag or an
+                        // alias refusing.
+                        let next_text = cursor.lines[nj].text.clone();
+                        let (next_props, next_offset) =
+                            match split_key_properties(&next_text, &state.bindings) {
+                                KeySplit::Refuse => return None,
+                                KeySplit::None => (
+                                    KeyProps {
+                                        anchor: None,
+                                        tag: KeyTag::None,
+                                    },
+                                    0,
+                                ),
+                                KeySplit::Props(props, offset) => (props, offset),
+                            };
+                        if next_props.anchor.is_some() || next_props.tag == KeyTag::Refuse {
+                            return None;
+                        }
+                        let after_next = next_text[next_offset..].trim_start();
+                        if after_next.starts_with('*') {
+                            return None;
+                        }
+                        if next_offset > 0 {
+                            // Properties standing on the key
+                            // line send the key through the key
+                            // path, where the merge spelling
+                            // stands as a key and never meets
+                            // the value position refusal.
+                            cursor.pos = nj + 1;
+                            read_explicit_key_text(&next_text, cursor, indent, depth + 1, state)?
+                        } else {
+                            let line_merge = after_next.trim() == "<<";
+                            let built = parse_block(cursor, indent, depth + 1, state)?;
+                            (YamlKey::of(&built.value)?, line_merge)
+                        }
+                    }
+                    _ => (YamlKey::Null, false),
+                }
+            } else {
+                read_explicit_key_text(key_text, cursor, indent, depth + 1, state)?
+            };
+            let value = match cursor.peek_content() {
+                Some(nj)
+                    if cursor.lines[nj].indent == indent
+                        && colon_opening(&cursor.lines[nj].text) =>
+                {
+                    let value_line = cursor.lines[nj].clone();
+                    cursor.pos = nj + 1;
+                    let value_text = value_line.text[1..].trim_start().to_string();
+                    if value_text.is_empty() || value_text.starts_with('#') {
+                        following_block_value(cursor, indent, depth, state, &Tag::None)?
+                    } else {
+                        match split_properties(&value_text, &state.bindings) {
+                            PropSplit::Refuse => return None,
+                            PropSplit::Props(props, offset)
+                                if value_text[offset..].is_empty()
+                                    || value_text[offset..].starts_with('#') =>
+                            {
+                                if let Some(name) = &props.anchor {
+                                    state.mark(name)?;
+                                }
+                                let built = following_block_value(
+                                    cursor, indent, depth, state, &props.tag,
+                                )?;
+                                finish_props(state, props, built)?
+                            }
+                            _ => parse_inline_value(
+                                &value_text,
+                                cursor,
+                                indent,
+                                indent,
+                                depth + 1,
+                                state,
+                            )?,
+                        }
+                    }
+                }
+                _ => Built::empty_scalar(),
+            };
+            if merge_tag || plain_merge {
+                merge_sources.push(value);
+            } else {
+                explicit.push((key, value));
+            }
+            continue;
+        }
         let first_pair = explicit.is_empty() && merge_sources.is_empty();
         if key_props.anchor.is_some() && !first_pair {
             return None;
@@ -2544,7 +2779,7 @@ fn parse_mapping(
         let rest = line.text[rest_start..].trim_start().to_string();
         cursor.pos = li + 1;
         let value = if rest.is_empty() || rest.starts_with('#') {
-            following_block_value(cursor, indent, depth, state)?
+            following_block_value(cursor, indent, depth, state, &Tag::None)?
         } else {
             match split_properties(&rest, &state.bindings) {
                 PropSplit::Refuse => return None,
@@ -2557,7 +2792,7 @@ fn parse_mapping(
                     if let Some(name) = &props.anchor {
                         state.mark(name)?;
                     }
-                    let built = following_block_value(cursor, indent, depth, state)?;
+                    let built = following_block_value(cursor, indent, depth, state, &props.tag)?;
                     finish_props(state, props, built)?
                 }
                 _ => parse_inline_value(&rest, cursor, indent, indent, depth + 1, state)?,
@@ -2629,7 +2864,7 @@ fn parse_sequence(
                     Some(nj) => {
                         let next = cursor.lines[nj].clone();
                         if next.indent > indent {
-                            parse_block(cursor, indent, depth + 1, state)?
+                            parse_block_tagged(cursor, indent, depth + 1, state, &props.tag)?
                         } else {
                             Built::empty_scalar()
                         }
@@ -2668,6 +2903,16 @@ fn parse_sequence(
 fn find_key_split(text: &str) -> Option<(String, usize)> {
     let bytes = text.as_bytes();
     let first = *bytes.first()?;
+    if first == b'?' && bytes.get(1) == Some(&b':') {
+        // The question mark standing against the colon is
+        // scalar content and reads as the key, the mark
+        // opening an explicit pair only in front of a space.
+        let after = 2;
+        if after >= bytes.len() || bytes[after] == b' ' || bytes[after] == b'\t' {
+            return Some(("?".to_string(), after));
+        }
+        return None;
+    }
     if first == b'"' || first == b'\'' {
         let (_, end) = if first == b'"' {
             parse_double_quoted(text)?
@@ -2885,7 +3130,14 @@ fn parse_inline_value(
                     state.mark(name)?;
                 }
                 let built = if rest.is_empty() || rest.starts_with('#') {
-                    read_following_block_inline(cursor, block_indent, parent_indent, depth, state)?
+                    read_following_block_inline(
+                        cursor,
+                        block_indent,
+                        parent_indent,
+                        depth,
+                        state,
+                        &props.tag,
+                    )?
                 } else {
                     parse_inline_node(
                         rest,
@@ -2924,6 +3176,7 @@ fn read_following_block_inline(
     parent_indent: usize,
     depth: usize,
     state: &mut ReadState,
+    tag: &Tag,
 ) -> Option<Built> {
     let Some(nj) = cursor.peek_content() else {
         return Some(Built::empty_scalar());
@@ -2932,7 +3185,7 @@ fn read_following_block_inline(
     if next.indent == block_indent && is_dash_line(&next) {
         parse_sequence(cursor, block_indent, depth + 1, state)
     } else if next.indent > parent_indent {
-        parse_block(cursor, parent_indent, depth + 1, state)
+        parse_block_tagged(cursor, parent_indent, depth + 1, state, tag)
     } else {
         Some(Built::empty_scalar())
     }
@@ -3717,32 +3970,68 @@ impl<'a> FlowParser<'a> {
                             return None;
                         }
                     }
-                    let (key_value, key_plain) = match self.peek()? {
-                        '"' => {
-                            let text: String = self.chars[self.pos..].iter().collect();
-                            let (value, end) = parse_flow_double_quoted(&text)?;
-                            self.pos += end;
-                            (YamlValue::Text(value), None)
+                    let mut empty_explicit_key = false;
+                    if self.peek() == Some('?')
+                        && matches!(
+                            self.chars.get(self.pos + 1),
+                            Some(' ') | Some('}') | Some(',')
+                        )
+                    {
+                        // An explicit key opens with the
+                        // question mark, the key node standing
+                        // behind it, and an empty key standing
+                        // when the pair or the mapping closes
+                        // at once behind the mark.
+                        self.pos += 1;
+                        self.skip_separators();
+                        if self.peek() == Some('&') || self.peek() == Some('*') {
+                            return None;
                         }
-                        '\'' => {
-                            let text: String = self.chars[self.pos..].iter().collect();
-                            let (value, end) = parse_flow_single_quoted(&text)?;
-                            self.pos += end;
-                            (YamlValue::Text(value), None)
+                        if self.peek() == Some('!') {
+                            // A key tag stands behind the
+                            // marker as it stands in front of a
+                            // compact key, under the same
+                            // classes.
+                            key_tag = self.take_key_tag()?;
+                            self.skip_separators();
+                            if self.peek() == Some('&') || self.peek() == Some('*') {
+                                return None;
+                            }
                         }
-                        '[' | '{' => {
-                            let built = self.parse_value(depth + 1)?;
-                            (built.value, None)
+                        if matches!(self.peek(), Some('}') | Some(',')) {
+                            empty_explicit_key = true;
                         }
-                        ',' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => return None,
-                        _ => {
-                            let folded = self.scan_plain_token()?;
-                            let plain = if folded == "<<" {
-                                Some(folded.clone())
-                            } else {
-                                None
-                            };
-                            (resolve_plain_scalar(&folded)?, plain)
+                    }
+                    let (key_value, key_plain) = if empty_explicit_key {
+                        (YamlValue::Null, None)
+                    } else {
+                        match self.peek()? {
+                            '"' => {
+                                let text: String = self.chars[self.pos..].iter().collect();
+                                let (value, end) = parse_flow_double_quoted(&text)?;
+                                self.pos += end;
+                                (YamlValue::Text(value), None)
+                            }
+                            '\'' => {
+                                let text: String = self.chars[self.pos..].iter().collect();
+                                let (value, end) = parse_flow_single_quoted(&text)?;
+                                self.pos += end;
+                                (YamlValue::Text(value), None)
+                            }
+                            '[' | '{' => {
+                                let built = self.parse_value(depth + 1)?;
+                                (built.value, None)
+                            }
+                            ',' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => return None,
+                            _ => {
+                                let folded = self.scan_plain_token()?;
+                                let plain = if folded == "<<" {
+                                    Some(folded.clone())
+                                } else {
+                                    None
+                                };
+                                (resolve_plain_scalar(&folded)?, plain)
+                            }
                         }
                     };
                     self.skip_separators();

@@ -4120,9 +4120,22 @@
    {
     "text": "? explicit\n: key\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "explicit"
+        },
+        {
+         "t": "str",
+         "v": "key"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
     "text": "a: [1, 2\n",
@@ -5029,9 +5042,22 @@
    {
     "text": "?: v\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "?"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
     "text": "a: 1\n... # end\n",
@@ -7322,12 +7348,28 @@
     }
    },
    {
-    "name": "block scalar as an explicit key refuses",
+    "name": "block scalar as an explicit key",
     "text": "? |\n  x\n: 1\n",
     "expect": {
-     "err": "port refusal"
-    },
-    "port_stated": true
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
    },
    {
     "name": "block content spelling a number",
@@ -26423,6 +26465,947 @@
      "err": "port refusal"
     },
     "port_stated": true
+   },
+   {
+    "name": "explicit key reads its pair",
+    "text": "? key\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit pair beside compact pairs",
+    "text": "a: 1\n? b\n: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key spread over lines",
+    "text": "?\n  key\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key with a block sequence value",
+    "text": "? key\n:\n  - 1\n  - 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key with a block mapping value",
+    "text": "? key\n:\n  a: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "a"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key with a following lines scalar value",
+    "text": "? key\n:\n  value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit null key",
+    "text": "? ~\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "null"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit int key",
+    "text": "? 42\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "int",
+         "v": "42"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit date key",
+    "text": "? 2026-01-01\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "date",
+         "v": "2026-01-01"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit quoted key",
+    "text": "? \"a b\"\n: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a b"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key with no colon line reads null",
+    "text": "? foo\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "foo"
+        },
+        {
+         "t": "null"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key with no colon line before a pair",
+    "text": "? foo\nbar: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "foo"
+        },
+        {
+         "t": "null"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "bar"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit merge key",
+    "text": "base: &b {x: 1}\n? <<\n: *b\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "x"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "base"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit merge key with a list of sources",
+    "text": "one: &o {a: 1}\ntwo: &t {b: 2}\n? <<\n: [*o, *t]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "one"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "a"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "two"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "duplicate explicit key",
+    "text": "? a\n: 1\nb: 0\n? a\n: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "0"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "question mark against the colon",
+    "text": "?: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "?"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block scalar folded explicit key",
+    "text": "? >\n  x\n: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10
+         ]
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key with a block scalar value",
+    "text": "? k\n: |\n  body\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          98,
+          111,
+          100,
+          121,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit key in a sequence mapping",
+    "text": "- ? k\n  : v\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "k"
+          },
+          {
+           "t": "str",
+           "v": "v"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "explicit quoted key with a trailing comment",
+    "text": "? \"key\" # note\n: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "colon joined explicit key",
+    "text": "? :foo\n: value\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": ":foo"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tag on a following lines key",
+    "text": "s: &s {n: 1}\n?\n  !!merge <<\n: *s\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "n"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "s"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "n"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow explicit key",
+    "text": "{? key: value}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow explicit pair beside compact pairs",
+    "text": "{a: 1, ? b: 2}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow explicit key with no colon",
+    "text": "{? a}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "null"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow bare question mark",
+    "text": "{?}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "null"
+        },
+        {
+         "t": "null"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow explicit key with a non-specific tag",
+    "text": "{? ! key: value}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "value"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "collection explicit key refuses",
+    "text": "? [a, b]\n: 1\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "flow collection explicit key refuses",
+    "text": "{? [a]: 1}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "colon line with no pair open refuses",
+    "text": ": value\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "dash opening as an explicit key refuses",
+    "text": "? - a\n: 1\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "mapping as an explicit key refuses",
+    "text": "? a: 1\n: 2\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "bare dash as an explicit key refuses",
+    "text": "? -\n: 1\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "question line carrying its colon refuses",
+    "text": "? : v\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "anchored explicit key refuses",
+    "text": "? &a k\n: 1\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "tagged explicit key refuses",
+    "text": "? !!str k\n: 1\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "alias explicit key refuses",
+    "text": "a: &x 1\n? *x\n: 2\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "anchored key on following lines refuses",
+    "text": "?\n  &a k\n: 1\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "alias key on following lines refuses",
+    "text": "a: &x 1\n?\n  *x\n: 2\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
+   },
+   {
+    "name": "str tag on following lines over an invalid date",
+    "text": "key: !!str\n  2026-13-45\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "2026-13-45"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tag on following lines over a valid date",
+    "text": "key: !!str\n  2026-01-01\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "str",
+         "v": "2026-01-01"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "int tag on following lines over a date spelling",
+    "text": "key: !!int\n  2026-01-01\n",
+    "expect": {
+     "err": "ValueError"
+    }
+   },
+   {
+    "name": "timestamp tag on following lines over an invalid date",
+    "text": "key: !!timestamp\n  2026-13-45\n",
+    "expect": {
+     "err": "ValueError"
+    }
+   },
+   {
+    "name": "bool tag on following lines",
+    "text": "key: !!bool\n  yes\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "bool",
+         "v": true
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "float tag on following lines",
+    "text": "key: !!float\n  1.5\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "key"
+        },
+        {
+         "t": "float",
+         "v": "1.5"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tag on following lines in a sequence",
+    "text": "- !!str\n  2026-13-45\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "2026-13-45"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tag standing alone at the root over an invalid date",
+    "text": "!!str\n2026-13-45\n",
+    "expect": {
+     "ok": {
+      "t": "str",
+      "v": "2026-13-45"
+     }
+    }
    }
   ],
   "yaml_strings": [
