@@ -263,8 +263,8 @@ fn census_stands() {
     assert_eq!(section("workflows").len(), 36, "workflows census");
     assert_eq!(section("reports").len(), 15, "reports census");
     assert_eq!(section("patterns").len(), 66, "patterns census");
-    assert_eq!(section("yaml_values").len(), 355, "yaml values census");
-    assert_eq!(section("yaml_strings").len(), 36, "yaml strings census");
+    assert_eq!(section("yaml_values").len(), 421, "yaml values census");
+    assert_eq!(section("yaml_strings").len(), 40, "yaml strings census");
     assert_eq!(section("json_values").len(), 35, "json values census");
 }
 
