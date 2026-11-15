@@ -191,6 +191,57 @@ fn tag_yaml(value: &YamlValue) -> JsonValue {
             ("micros", JsonValue::text(instant.to_string())),
             ("offset", JsonValue::Int(*offset)),
         ]),
+        YamlValue::Bytes(bytes) => JsonValue::object(vec![
+            ("t", JsonValue::text("bytes")),
+            (
+                "v",
+                JsonValue::List(
+                    bytes
+                        .iter()
+                        .map(|byte| JsonValue::Int(*byte as i64))
+                        .collect(),
+                ),
+            ),
+        ]),
+        YamlValue::Set(members) => {
+            // The members stand sorted by their repr
+            // spellings under the convention of PORT9-5, the
+            // generator recording them in the same order.
+            let mut tagged: Vec<(String, JsonValue)> = members
+                .iter()
+                .map(|key| {
+                    (
+                        deadgate::yaml::python_repr(&deadgate::yamlvalue::key_to_value(key)),
+                        tag_yaml(&deadgate::yamlvalue::key_to_value(key)),
+                    )
+                })
+                .collect();
+            tagged.sort_by(|a, b| a.0.cmp(&b.0));
+            JsonValue::object(vec![
+                ("t", JsonValue::text("set")),
+                (
+                    "v",
+                    JsonValue::List(tagged.into_iter().map(|(_, tag)| tag).collect()),
+                ),
+            ])
+        }
+        YamlValue::Pairs(pairs) => JsonValue::object(vec![
+            ("t", JsonValue::text("pairs")),
+            (
+                "v",
+                JsonValue::List(
+                    pairs
+                        .iter()
+                        .map(|(key, item)| {
+                            JsonValue::List(vec![
+                                tag_yaml(&deadgate::yamlvalue::key_to_value(key)),
+                                tag_yaml(item),
+                            ])
+                        })
+                        .collect(),
+                ),
+            ),
+        ]),
         YamlValue::List(items) => JsonValue::object(vec![
             ("t", JsonValue::text("list")),
             ("v", JsonValue::List(items.iter().map(tag_yaml).collect())),
@@ -263,7 +314,7 @@ fn census_stands() {
     assert_eq!(section("workflows").len(), 36, "workflows census");
     assert_eq!(section("reports").len(), 15, "reports census");
     assert_eq!(section("patterns").len(), 66, "patterns census");
-    assert_eq!(section("yaml_values").len(), 444, "yaml values census");
+    assert_eq!(section("yaml_values").len(), 494, "yaml values census");
     assert_eq!(section("yaml_strings").len(), 40, "yaml strings census");
     assert_eq!(section("json_values").len(), 35, "json values census");
 }

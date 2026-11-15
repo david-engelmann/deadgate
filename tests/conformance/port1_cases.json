@@ -29819,6 +29819,1096 @@
       ]
      }
     }
+   },
+   {
+    "name": "binary scalar",
+    "text": "a: !!binary aGk=\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary scalar with spaces",
+    "text": "a: !!binary aG k=\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary scalar folded across lines",
+    "text": "a: !!binary aG\n  k=\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary block scalar",
+    "text": "a: !!binary |\n  aGk=\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary scalar in flow",
+    "text": "{k: !!binary aGk=}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary key",
+    "text": "!!binary aGk=: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary key in flow",
+    "text": "{!!binary aGk=: 1}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary with bad padding",
+    "text": "a: !!binary aGk\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "binary with one data character",
+    "text": "a: !!binary Y\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "binary empty scalar",
+    "text": "a: !!binary ''\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": []
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary null word decodes as its letters",
+    "text": "a: !!binary null\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          158,
+          233,
+          101
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary tilde reads as empty bytes",
+    "text": "a: !!binary ~\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": []
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary anchored and aliased",
+    "text": "a: &x !!binary aGk=\nb: *x\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary carrying a non ascii character",
+    "text": "a: !!binary äGk=\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "binary in a sequence",
+    "text": "- !!binary aGk=\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "bytes",
+        "v": [
+         104,
+         105
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary decoding ends at a padded quantum",
+    "text": "a: !!binary YQ==YQ==\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          97
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary data behind a completed quantum is ignored",
+    "text": "a: !!binary aGk=JUNK\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          104,
+          105
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary padding displaced by a data character",
+    "text": "a: !!binary YW=Jj\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          97,
+          98,
+          99
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary padding displaced leaving a partial quantum",
+    "text": "a: !!binary YW=J\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "binary padding behind one data character",
+    "text": "a: !!binary Y=Jj\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "binary leading padding marks are discarded",
+    "text": "a: !!binary =YWJj\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          97,
+          98,
+          99
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary padding marks alone",
+    "text": "a: !!binary ====\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": []
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "binary padding after three data characters",
+    "text": "a: !!binary YWI=\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "bytes",
+         "v": [
+          97,
+          98
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set in block form",
+    "text": "a: !!set\n  x: ~\n  y: ~\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          },
+          {
+           "t": "str",
+           "v": "y"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set in flow form",
+    "text": "a: !!set {x, y}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          },
+          {
+           "t": "str",
+           "v": "y"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set discards the values beside its keys",
+    "text": "a: !!set\n  x: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set collapses a duplicate member",
+    "text": "a: !!set\n  x: ~\n  x: ~\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set counts a number and its boolean as one member",
+    "text": "a: !!set {1, true}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "int",
+           "v": "1"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set in explicit key form",
+    "text": "a: !!set\n  ? x\n  ? y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          },
+          {
+           "t": "str",
+           "v": "y"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set over a merge",
+    "text": "base: &b\n  x: ~\na: !!set\n  <<: *b\n  y: ~\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "base"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "null"
+           }
+          ]
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          },
+          {
+           "t": "str",
+           "v": "y"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "empty set",
+    "text": "a: !!set {}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": []
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set over a scalar",
+    "text": "a: !!set word\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "set with an unhashable member",
+    "text": "a: !!set\n  ? [1]\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "set standing as a key",
+    "text": "? !!set {a}\n: 1\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "set anchored and aliased",
+    "text": "a: &s !!set {p}\nb: *s\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "p"
+          }
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "p"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set of mixed members",
+    "text": "a: !!set {2, x, false, ~}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "set",
+         "v": [
+          {
+           "t": "str",
+           "v": "x"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          },
+          {
+           "t": "bool",
+           "v": false
+          },
+          {
+           "t": "null"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "set as the document",
+    "text": "!!set\n? a\n? b\n",
+    "expect": {
+     "ok": {
+      "t": "set",
+      "v": [
+       {
+        "t": "str",
+        "v": "a"
+       },
+       {
+        "t": "str",
+        "v": "b"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "ordered map in block form",
+    "text": "a: !!omap\n  - x: 1\n  - y: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "y"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs in block form",
+    "text": "a: !!pairs\n  - x: 1\n  - y: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "y"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs in flow form",
+    "text": "a: !!pairs [x: 1, y: 2]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "y"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs keep duplicate keys",
+    "text": "a: !!pairs\n  - x: 1\n  - x: 2\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "ordered map entry with two pairs",
+    "text": "a: !!omap\n  - {x: 1, y: 2}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "ordered map entry that is not a mapping",
+    "text": "a: !!omap\n  - 5\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "pairs over a mapping",
+    "text": "a: !!pairs {x: 1}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "pairs over a scalar",
+    "text": "a: !!pairs word\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "ordered map standing as a key",
+    "text": "? !!omap [{x: 1}]\n: 2\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "ordered map with an anchored entry aliased",
+    "text": "a: !!omap\n  - &e {x: 1}\n  - *e\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "unknown tag on a scalar",
+    "text": "a: !mytag 12\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "sequence tag over a mapping",
+    "text": "a: !!seq {x: 1}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "set over a sequence",
+    "text": "a: !!set [x, y]\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
    }
   ],
   "yaml_strings": [

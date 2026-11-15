@@ -28,6 +28,15 @@ pub enum YamlValue {
     AwareDateTime(i128, i64),
     List(Vec<YamlValue>),
     Mapping(Vec<(YamlKey, YamlValue)>),
+    /// Bytes standing under the binary tag, decoded from the
+    /// scalar's base64 text.
+    Bytes(Vec<u8>),
+    /// A set standing under the set tag, its members standing
+    /// as keys in the order the node's pairs first wrote them.
+    Set(Vec<YamlKey>),
+    /// A list of pairs standing under the ordered map or the
+    /// pairs tag, in the order of the sequence it read from.
+    Pairs(Vec<(YamlKey, YamlValue)>),
 }
 
 impl YamlValue {
@@ -88,6 +97,7 @@ pub enum YamlKey {
     Date(i64),
     NaiveDateTime(i128),
     AwareDateTime(i128, i64),
+    Bytes(Vec<u8>),
 }
 
 impl YamlKey {
@@ -106,7 +116,11 @@ impl YamlKey {
             YamlValue::AwareDateTime(instant, offset) => {
                 Some(YamlKey::AwareDateTime(*instant, *offset))
             }
-            YamlValue::List(_) | YamlValue::Mapping(_) => None,
+            YamlValue::Bytes(bytes) => Some(YamlKey::Bytes(bytes.clone())),
+            YamlValue::List(_)
+            | YamlValue::Mapping(_)
+            | YamlValue::Set(_)
+            | YamlValue::Pairs(_) => None,
         }
     }
 }
@@ -180,6 +194,7 @@ pub fn key_to_value(key: &YamlKey) -> YamlValue {
         YamlKey::Date(day) => YamlValue::Date(*day),
         YamlKey::NaiveDateTime(instant) => YamlValue::NaiveDateTime(*instant),
         YamlKey::AwareDateTime(instant, offset) => YamlValue::AwareDateTime(*instant, *offset),
+        YamlKey::Bytes(bytes) => YamlValue::Bytes(bytes.clone()),
     }
 }
 
@@ -191,6 +206,7 @@ impl PartialEq for YamlKey {
         match (self, other) {
             (YamlKey::Null, YamlKey::Null) => true,
             (YamlKey::Text(a), YamlKey::Text(b)) => a == b,
+            (YamlKey::Bytes(a), YamlKey::Bytes(b)) => a == b,
             (YamlKey::Date(a), YamlKey::Date(b)) => a == b,
             (YamlKey::NaiveDateTime(a), YamlKey::NaiveDateTime(b)) => a == b,
             // Two aware timestamps are the one key when they
