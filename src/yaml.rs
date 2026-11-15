@@ -2270,6 +2270,68 @@ pub fn parse_yaml(text: &str) -> Option<YamlValue> {
     }
 }
 
+/// Whether the words standing behind a start marker on its
+/// own line open a block node, a block mapping pair or a
+/// block sequence entry, the forms the runtime reading
+/// refuses there (PORT8-1). Properties standing in front of
+/// the node are read past, as the reading reads them, and a
+/// pair standing inside a flow collection is flow content
+/// and no block pair.
+fn inline_opens_block_node(rest: &str) -> bool {
+    let mut text = rest.trim_start();
+    loop {
+        if let Some(after) = text.strip_prefix('&') {
+            match after.split_once(' ') {
+                Some((_, tail)) => text = tail.trim_start(),
+                None => return false,
+            }
+        } else if text.starts_with('!') {
+            match text.split_once(' ') {
+                Some((_, tail)) => text = tail.trim_start(),
+                None => return false,
+            }
+        } else {
+            break;
+        }
+    }
+    if text == "-" || text.starts_with("- ") {
+        return true;
+    }
+    if text.starts_with('[') || text.starts_with('{') {
+        return false;
+    }
+    if let Some(quote) = text.chars().next().filter(|c| *c == '"' || *c == '\'') {
+        let mut index = 1;
+        let chars: Vec<char> = text.chars().collect();
+        while index < chars.len() {
+            if quote == '"' && chars[index] == '\\' {
+                index += 2;
+                continue;
+            }
+            if chars[index] == quote {
+                if quote == '\'' && chars.get(index + 1) == Some(&'\'') {
+                    index += 2;
+                    continue;
+                }
+                break;
+            }
+            index += 1;
+        }
+        if index >= chars.len() {
+            return false;
+        }
+        let after: String = chars[index + 1..].iter().collect();
+        let after = after.trim_start();
+        return after == ":" || after.starts_with(": ");
+    }
+    let scalar = match text.find(" #") {
+        Some(at) => &text[..at],
+        None => text,
+    };
+    let scalar = scalar.trim_end();
+    scalar.ends_with(':') || scalar.contains(": ")
+}
+
 fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     // The runtime reading takes the carriage return forms and
     // the next line and line separator and paragraph separator
@@ -2353,6 +2415,16 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
             opener_seen = true;
             start = cursor.next_content(start + 1).unwrap_or(cursor.lines.len());
         } else if let Some(rest) = text.strip_prefix("--- ") {
+            // The runtime reading takes the words behind the
+            // marker as the document's one node, so a block
+            // mapping pair or a block sequence entry standing
+            // there refuses the reading, in the plain form and
+            // behind a property and with a quoted key alike,
+            // where a scalar or a flow node standing there
+            // reads as the document (PORT8-1).
+            if inline_opens_block_node(rest) {
+                return None;
+            }
             opener_seen = true;
             let standing = cursor.lines[start].clone();
             cursor.lines[start] = Line {
@@ -2377,6 +2449,15 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
                 return None;
             }
             if column_zero && (text == "..." || text.starts_with("... ")) {
+                // An end marker with no document in front of
+                // it refuses the reading, as the runtime
+                // reading refuses it. A start marker standing
+                // before it opens the empty document it ends,
+                // and content standing before it is the
+                // document it ends (PORT8-2).
+                if found == start && !opener_seen {
+                    return None;
+                }
                 // A document end marker may carry a comment
                 // behind it and still end the document, as the
                 // runtime reading takes it. Any other words
