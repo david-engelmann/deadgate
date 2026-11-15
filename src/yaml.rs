@@ -179,7 +179,11 @@ pub fn python_str(value: &YamlValue) -> String {
             };
             format!("{with_fraction}{}", offset_suffix(*offset))
         }
-        YamlValue::List(_) | YamlValue::Mapping(_) => python_repr(value),
+        YamlValue::List(_)
+        | YamlValue::Mapping(_)
+        | YamlValue::Bytes(_)
+        | YamlValue::Set(_)
+        | YamlValue::Pairs(_) => python_repr(value),
     }
 }
 
@@ -283,7 +287,45 @@ fn key_repr(key: &YamlKey) -> String {
         }
         YamlKey::NaiveDateTime(instant) => datetime_repr(*instant, None),
         YamlKey::AwareDateTime(instant, offset) => datetime_repr(*instant, Some(*offset)),
+        YamlKey::Bytes(bytes) => bytes_repr(bytes),
     }
+}
+
+/// The runtime's repr of a bytes value, the letter b before a
+/// quoted spelling of the bytes. The quote stands as a single
+/// quote unless the bytes carry a single quote and no double
+/// quote, printable ASCII bytes stand as themselves, the
+/// backslash and the quote in force are escaped, the newline
+/// and carriage return and tab stand as their letter escapes,
+/// and every other byte stands as a hexadecimal escape.
+fn bytes_repr(bytes: &[u8]) -> String {
+    let has_single = bytes.contains(&b'\'');
+    let has_double = bytes.contains(&b'"');
+    let quote = if has_single && !has_double {
+        b'"'
+    } else {
+        b'\''
+    };
+    let mut out = String::from("b");
+    out.push(quote as char);
+    for byte in bytes {
+        if *byte == quote || *byte == b'\\' {
+            out.push('\\');
+            out.push(*byte as char);
+        } else if *byte == b'\n' {
+            out.push_str("\\n");
+        } else if *byte == b'\r' {
+            out.push_str("\\r");
+        } else if *byte == b'\t' {
+            out.push_str("\\t");
+        } else if (0x20..0x7f).contains(byte) {
+            out.push(*byte as char);
+        } else {
+            out.push_str(&format!("\\x{byte:02x}"));
+        }
+    }
+    out.push(quote as char);
+    out
 }
 
 /// The Python repr of a YAML value, as the reconciliation reads
@@ -300,6 +342,27 @@ pub fn python_repr(value: &YamlValue) -> String {
                 .map(|(key, item)| format!("{}: {}", key_repr(key), python_repr(item)))
                 .collect();
             format!("{{{}}}", parts.join(", "))
+        }
+        YamlValue::Bytes(bytes) => bytes_repr(bytes),
+        YamlValue::Set(members) => {
+            if members.is_empty() {
+                "set()".to_string()
+            } else {
+                // The recorded spelling of a set under
+                // PORT9-5, its members' spellings sorted, the
+                // runtime's own order standing seeded afresh
+                // in each of its runs.
+                let mut parts: Vec<String> = members.iter().map(key_repr).collect();
+                parts.sort();
+                format!("{{{}}}", parts.join(", "))
+            }
+        }
+        YamlValue::Pairs(pairs) => {
+            let parts: Vec<String> = pairs
+                .iter()
+                .map(|(key, item)| format!("({}, {})", key_repr(key), python_repr(item)))
+                .collect();
+            format!("[{}]", parts.join(", "))
         }
         YamlValue::Text(text) => string_repr(text),
         YamlValue::Date(day) => {
@@ -898,6 +961,10 @@ enum Tag {
     Seq,
     Map,
     Merge,
+    Binary,
+    Set,
+    Omap,
+    Pairs,
     Refuse,
 }
 
@@ -905,7 +972,7 @@ impl Tag {
     fn is_constructor(&self) -> bool {
         matches!(
             self,
-            Tag::Str | Tag::Int | Tag::Float | Tag::Bool | Tag::Null | Tag::Timestamp
+            Tag::Str | Tag::Int | Tag::Float | Tag::Bool | Tag::Null | Tag::Timestamp | Tag::Binary
         )
     }
 }
@@ -1179,6 +1246,10 @@ fn classify_tag(full: &str) -> Tag {
         "tag:yaml.org,2002:seq" => Tag::Seq,
         "tag:yaml.org,2002:map" => Tag::Map,
         "tag:yaml.org,2002:merge" => Tag::Merge,
+        "tag:yaml.org,2002:binary" => Tag::Binary,
+        "tag:yaml.org,2002:set" => Tag::Set,
+        "tag:yaml.org,2002:omap" => Tag::Omap,
+        "tag:yaml.org,2002:pairs" => Tag::Pairs,
         _ => Tag::Refuse,
     }
 }
@@ -1323,7 +1394,7 @@ fn key_tag_of(tag: &Tag) -> KeyTag {
         Tag::None => KeyTag::None,
         Tag::NonSpecific => KeyTag::NonSpecific,
         Tag::Merge => KeyTag::Merge,
-        Tag::Str | Tag::Int | Tag::Float | Tag::Bool | Tag::Null | Tag::Timestamp => {
+        Tag::Str | Tag::Int | Tag::Float | Tag::Bool | Tag::Null | Tag::Timestamp | Tag::Binary => {
             KeyTag::Convert(tag.clone())
         }
         _ => KeyTag::Refuse,
@@ -1798,6 +1869,86 @@ fn read_date_only_flexible(text: &str) -> Option<YamlValue> {
 /// Convert a scalar text under a scalar tag, the constructor
 /// of the runtime standing in place of plain resolution. A
 /// conversion the constructor cannot make refuses.
+/// Decode a scalar's text as the runtime's binary
+/// constructor decodes it, the base64 decoding the standard
+/// library's decodebytes performs. A character outside the
+/// ASCII range refuses the whole reading, as the constructor
+/// refuses it, and every other character outside the base64
+/// alphabet and the padding mark is discarded before the
+/// decoding begins. A padding mark standing where a quantum
+/// holds no data character is discarded with them. A padding
+/// mark after two data characters stands pending, and a data
+/// character arriving behind it takes the place it claimed,
+/// while a second padding mark completes the quantum at one
+/// byte and ends the decoding, everything behind it ignored.
+/// A padding mark after three data characters completes the
+/// quantum at two bytes and ends the decoding the same way.
+/// A padding mark after one data character refuses, and the
+/// text ending on a pending padding mark or on a partial
+/// quantum of one, two, or three data characters refuses.
+fn decode_binary_text(text: &str) -> Option<Vec<u8>> {
+    if !text.is_ascii() {
+        return None;
+    }
+    let value_of = |byte: u8| -> Option<u32> {
+        match byte {
+            b'A'..=b'Z' => Some((byte - b'A') as u32),
+            b'a'..=b'z' => Some((byte - b'a') as u32 + 26),
+            b'0'..=b'9' => Some((byte - b'0') as u32 + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let mut out: Vec<u8> = Vec::new();
+    let mut quad: Vec<u32> = Vec::new();
+    let mut pending_pad = false;
+    let mut done = false;
+    for byte in text.bytes() {
+        if done {
+            break;
+        }
+        if byte == b'=' {
+            match quad.len() {
+                0 => {}
+                1 => return None,
+                2 => {
+                    if pending_pad {
+                        out.push(((quad[0] << 2) | (quad[1] >> 4)) as u8);
+                        done = true;
+                    } else {
+                        pending_pad = true;
+                    }
+                }
+                3 => {
+                    out.push(((quad[0] << 2) | (quad[1] >> 4)) as u8);
+                    out.push((((quad[1] & 0xf) << 4) | (quad[2] >> 2)) as u8);
+                    done = true;
+                }
+                _ => return None,
+            }
+        } else if let Some(value) = value_of(byte) {
+            if pending_pad {
+                pending_pad = false;
+            }
+            quad.push(value);
+            if quad.len() == 4 {
+                out.push(((quad[0] << 2) | (quad[1] >> 4)) as u8);
+                out.push((((quad[1] & 0xf) << 4) | (quad[2] >> 2)) as u8);
+                out.push((((quad[2] & 0x3) << 6) | quad[3]) as u8);
+                quad.clear();
+            }
+        }
+    }
+    if done {
+        return Some(out);
+    }
+    if pending_pad || !quad.is_empty() {
+        return None;
+    }
+    Some(out)
+}
+
 fn convert_tagged_scalar(tag: &Tag, text: &str) -> Option<YamlValue> {
     match tag {
         Tag::Str => Some(YamlValue::Text(text.to_string())),
@@ -1810,6 +1961,7 @@ fn convert_tagged_scalar(tag: &Tag, text: &str) -> Option<YamlValue> {
         },
         Tag::Null => Some(YamlValue::Null),
         Tag::Timestamp => convert_timestamp(text),
+        Tag::Binary => decode_binary_text(text).map(YamlValue::Bytes),
         _ => None,
     }
 }
@@ -1830,6 +1982,54 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
         Tag::Map => {
             if matches!(built.value, YamlValue::Mapping(_)) {
                 Some(built)
+            } else {
+                None
+            }
+        }
+        Tag::Set => {
+            // The mapping the node built hands its keys over
+            // as the set's members, its merges already
+            // expanded and its repeated keys already standing
+            // at their first positions under the one key, so
+            // the members stand in the node's order with the
+            // runtime's equality already told.
+            if let YamlValue::Mapping(pairs) = built.value {
+                let members: Vec<YamlKey> = pairs.into_iter().map(|(key, _value)| key).collect();
+                Some(Built {
+                    value: YamlValue::Set(members),
+                    tally: built.tally,
+                    items: None,
+                    text: None,
+                    plain_token: None,
+                    tag_done: true,
+                })
+            } else {
+                None
+            }
+        }
+        Tag::Omap | Tag::Pairs => {
+            // Each entry of the sequence stands as one pair
+            // whose key and value are the one pair of the
+            // mapping the entry carries, any other entry
+            // refusing the reading whole.
+            if let YamlValue::List(items) = built.value {
+                let mut pairs: Vec<(YamlKey, YamlValue)> = Vec::new();
+                for item in items {
+                    match item {
+                        YamlValue::Mapping(mut entry) if entry.len() == 1 => {
+                            pairs.push(entry.pop().expect("one pair"));
+                        }
+                        _ => return None,
+                    }
+                }
+                Some(Built {
+                    value: YamlValue::Pairs(pairs),
+                    tally: built.tally,
+                    items: None,
+                    text: None,
+                    plain_token: None,
+                    tag_done: true,
+                })
             } else {
                 None
             }
