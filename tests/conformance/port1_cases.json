@@ -29576,6 +29576,249 @@
       ]
      }
     }
+   },
+   {
+    "name": "pair on the start marker line",
+    "text": "--- a: 1\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "key alone on the start marker line",
+    "text": "--- a:\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "pair behind an anchor on the marker line",
+    "text": "--- &a a: 1\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "pair behind a tag on the marker line",
+    "text": "--- !!str a: 1\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "quoted pair on the marker line",
+    "text": "--- \"a\": 1\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "entry on the start marker line",
+    "text": "--- - 1\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "dash alone on the start marker line",
+    "text": "--- -\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "pair on the marker line with a pair behind it",
+    "text": "--- a: 1\nb: 2\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "scalar on the start marker line",
+    "text": "--- hello\n",
+    "expect": {
+     "ok": {
+      "t": "str",
+      "v": "hello"
+     }
+    }
+   },
+   {
+    "name": "colon scalar on the start marker line",
+    "text": "--- a:b\n",
+    "expect": {
+     "ok": {
+      "t": "str",
+      "v": "a:b"
+     }
+    }
+   },
+   {
+    "name": "flow pair on the start marker line",
+    "text": "--- [a: 1]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "a"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow mapping on the start marker line",
+    "text": "--- {a: 1}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "time scalar on the start marker line",
+    "text": "--- 12:30\n",
+    "expect": {
+     "ok": {
+      "t": "int",
+      "v": "750"
+     }
+    }
+   },
+   {
+    "name": "end marker alone",
+    "text": "...\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "end marker with a comment alone",
+    "text": "... # only\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "end marker behind only comments",
+    "text": "# c\n...\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "end marker behind a start marker",
+    "text": "---\n...\n",
+    "expect": {
+     "ok": {
+      "t": "null"
+     }
+    }
+   },
+   {
+    "name": "end marker behind a document",
+    "text": "a: 1\n...\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "end marker line inside a block scalar",
+    "text": "a: |\n  ...\n  text\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          46,
+          46,
+          46,
+          10,
+          116,
+          101,
+          120,
+          116,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "a second document behind the first",
+    "text": "---\na: 1\n---\nb: 2\n",
+    "expect": {
+     "err": "ComposerError"
+    }
+   },
+   {
+    "name": "the marker word standing as a value",
+    "text": "a: ---\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "---"
+        }
+       ]
+      ]
+     }
+    }
    }
   ],
   "yaml_strings": [
