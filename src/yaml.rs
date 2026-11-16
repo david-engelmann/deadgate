@@ -4513,49 +4513,97 @@ fn parse_block_scalar(
 }
 
 /// Whether the brackets of a flow text stand balanced, quotes
-/// taken into account.
+/// taken into account. A quote opens a span only where a
+/// quoted scalar can stand, under PORT11-3: where the entry it
+/// stands in carries no plain content before it. A quote
+/// standing behind the plain content of its entry is content
+/// of that entry's plain scalar and opens nothing. An entry
+/// begins at the text's start and behind every flow bracket
+/// and comma and behind the colon that divides a key from its
+/// value, the colon dividing only where the plain token scan
+/// lets it divide. An entry's properties, an anchor or an
+/// alias or a tag, stand before its scalar and do not begin
+/// it, so a quoted scalar behind a property still opens.
 fn flow_closed(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
     let mut depth = 0i64;
-    let mut chars = text.chars().peekable();
+    let mut index = 0usize;
     let mut quote: Option<char> = None;
-    while let Some(ch) = chars.next() {
+    let mut scalar_begun = false;
+    while index < chars.len() {
+        let ch = chars[index];
         match quote {
             Some('"') => match ch {
                 '\\' => {
-                    chars.next();
+                    index += 1;
                 }
-                '"' => quote = None,
+                '"' => {
+                    quote = None;
+                    scalar_begun = true;
+                }
                 _ => {}
             },
             Some('\'') => {
                 if ch == '\'' {
-                    if chars.peek() == Some(&'\'') {
-                        chars.next();
+                    if chars.get(index + 1) == Some(&'\'') {
+                        index += 1;
                     } else {
                         quote = None;
+                        scalar_begun = true;
                     }
                 }
             }
             _ => match ch {
-                '"' | '\'' => quote = Some(ch),
-                '[' | '{' => depth += 1,
+                '"' | '\'' => {
+                    if !scalar_begun {
+                        quote = Some(ch);
+                    }
+                }
+                '[' | '{' => {
+                    depth += 1;
+                    scalar_begun = false;
+                }
                 ']' | '}' => {
                     depth -= 1;
                     if depth < 0 {
                         return true;
                     }
+                    scalar_begun = true;
+                }
+                ',' => {
+                    scalar_begun = false;
+                }
+                ':' => {
+                    let next = chars.get(index + 1);
+                    scalar_begun = !(next.is_none()
+                        || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{')));
                 }
                 '#' => {
                     // A comment runs to the end of its line.
-                    for next in chars.by_ref() {
-                        if next == '\n' {
-                            break;
-                        }
+                    while index + 1 < chars.len() && chars[index + 1] != '\n' {
+                        index += 1;
                     }
                 }
-                _ => {}
+                '&' | '*' | '!' if !scalar_begun => {
+                    // A property of the entry, standing before
+                    // its scalar and not beginning it. The
+                    // property's token runs to its separator.
+                    while index + 1 < chars.len()
+                        && !matches!(
+                            chars[index + 1],
+                            ' ' | '\t' | '\n' | ',' | '[' | ']' | '{' | '}'
+                        )
+                    {
+                        index += 1;
+                    }
+                }
+                ' ' | '\t' | '\n' => {}
+                _ => {
+                    scalar_begun = true;
+                }
             },
         }
+        index += 1;
     }
     depth == 0 && quote.is_none()
 }
