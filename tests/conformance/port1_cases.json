@@ -31723,6 +31723,450 @@
     "expect": {
      "err": "ConstructorError"
     }
+   },
+   {
+    "name": "flow plain scalar carrying an apostrophe",
+    "text": "[don't, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "don't"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe scalar as a flow mapping value",
+    "text": "a: [don't, x]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "str",
+           "v": "don't"
+          },
+          {
+           "t": "str",
+           "v": "x"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe scalar as a flow key",
+    "text": "{don't: 1}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "don't"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow plain scalar carrying a double quote",
+    "text": "[a\"b, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a\"b"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe at a plain scalar's end",
+    "text": "[don', x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "don'"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "doubled apostrophes inside a flow plain scalar",
+    "text": "[it''s, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "it''s"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "quotes inside a plain scalar spanning words",
+    "text": "[say 'hi' there, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "say 'hi' there"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "double quotes inside a plain scalar spanning words",
+    "text": "[say \"hi\" there, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "say \"hi\" there"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "a colon inside a flow plain scalar carrying an apostrophe",
+    "text": "[a:b'c, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a:b'c"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe scalars across a flow mapping",
+    "text": "{k: don't, k2: o'clock}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "don't"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "k2"
+        },
+        {
+         "t": "str",
+         "v": "o'clock"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "double quote inside a flow mapping value",
+    "text": "{k: a\"b}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "a\"b"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow collection spanning lines carrying an apostrophe",
+    "text": "a: [don't,\n  x]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "str",
+           "v": "don't"
+          },
+          {
+           "t": "str",
+           "v": "x"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "nested flow collection carrying an apostrophe",
+    "text": "[[don't], x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "list",
+        "v": [
+         {
+          "t": "str",
+          "v": "don't"
+         }
+        ]
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe scalar beside a quoted scalar",
+    "text": "['quoted', don't]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "quoted"
+       },
+       {
+        "t": "str",
+        "v": "don't"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment after an apostrophe carrying flow collection",
+    "text": "[don't, x] # comment\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "don't"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe scalar standing as a pairs key",
+    "text": "a: !!pairs\n  - [don't, x]: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "str",
+              "v": "don't"
+             },
+             {
+              "t": "str",
+              "v": "x"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "apostrophe scalar behind an anchor in flow",
+    "text": "[&a don't, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "don't"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "several apostrophe scalars in one collection",
+    "text": "[don't, won't, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "don't"
+       },
+       {
+        "t": "str",
+        "v": "won't"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted scalar at an entry start",
+    "text": "['quoted', x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "quoted"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "unterminated quoted scalar at an entry start",
+    "text": "[x, 'tis]\n",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "quoted scalar followed by plain content",
+    "text": "['don't', x]\n",
+    "expect": {
+     "err": "ParserError"
+    }
    }
   ],
   "yaml_strings": [
