@@ -84,8 +84,13 @@ impl YamlValue {
     }
 }
 
-/// A mapping key. Keys are scalars only in the documents this
-/// tool reads.
+/// A key. A mapping's keys and a set's members stand as the
+/// scalar kinds, the runtime building both from keys it can
+/// hash, while a pair's key stands as any value the document
+/// builds, a list of pairs building neither a mapping nor a
+/// set. The reader carries the one key model for all three
+/// standings, and the border between them is held where the
+/// document stands built, in the reader.
 #[derive(Debug, Clone)]
 pub enum YamlKey {
     Null,
@@ -98,11 +103,18 @@ pub enum YamlKey {
     NaiveDateTime(i128),
     AwareDateTime(i128, i64),
     Bytes(Vec<u8>),
+    List(Vec<YamlValue>),
+    Mapping(Vec<(YamlKey, YamlValue)>),
+    Set(Vec<YamlKey>),
+    Pairs(Vec<(YamlKey, YamlValue)>),
 }
 
 impl YamlKey {
-    /// The key a scalar value stands as, or nothing when the
-    /// value is a container and so cannot be a key here.
+    /// The key a value stands as. Every value stands as a
+    /// key of its own kind, a container as the container key
+    /// a pair may carry; whether the key may stand where it
+    /// was read is the reader's border to hold, not this
+    /// conversion's.
     pub fn of(value: &YamlValue) -> Option<YamlKey> {
         match value {
             YamlValue::Null => Some(YamlKey::Null),
@@ -117,10 +129,10 @@ impl YamlKey {
                 Some(YamlKey::AwareDateTime(*instant, *offset))
             }
             YamlValue::Bytes(bytes) => Some(YamlKey::Bytes(bytes.clone())),
-            YamlValue::List(_)
-            | YamlValue::Mapping(_)
-            | YamlValue::Set(_)
-            | YamlValue::Pairs(_) => None,
+            YamlValue::List(items) => Some(YamlKey::List(items.clone())),
+            YamlValue::Mapping(pairs) => Some(YamlKey::Mapping(pairs.clone())),
+            YamlValue::Set(members) => Some(YamlKey::Set(members.clone())),
+            YamlValue::Pairs(pairs) => Some(YamlKey::Pairs(pairs.clone())),
         }
     }
 }
@@ -181,8 +193,8 @@ fn numeric_keys_equal(a: &YamlKey, b: &YamlKey) -> bool {
     }
 }
 
-/// The value a mapping key stands for, the key being a scalar
-/// by construction.
+/// The value a key stands for, a scalar key as the scalar it
+/// is and a container key as the container it carries.
 pub fn key_to_value(key: &YamlKey) -> YamlValue {
     match key {
         YamlKey::Null => YamlValue::Null,
@@ -195,6 +207,44 @@ pub fn key_to_value(key: &YamlKey) -> YamlValue {
         YamlKey::NaiveDateTime(instant) => YamlValue::NaiveDateTime(*instant),
         YamlKey::AwareDateTime(instant, offset) => YamlValue::AwareDateTime(*instant, *offset),
         YamlKey::Bytes(bytes) => YamlValue::Bytes(bytes.clone()),
+        YamlKey::List(items) => YamlValue::List(items.clone()),
+        YamlKey::Mapping(pairs) => YamlValue::Mapping(pairs.clone()),
+        YamlKey::Set(members) => YamlValue::Set(members.clone()),
+        YamlKey::Pairs(pairs) => YamlValue::Pairs(pairs.clone()),
+    }
+}
+
+/// The equality of two values, as the runtime's equality
+/// reads them. Two values standing inside a container key
+/// meet here when the reader's own machinery compares the
+/// keys that carry them, and the reading follows the
+/// runtime's rules: numbers of different kinds compare by
+/// their value, a mapping compares without regard to its
+/// pairs' order, a sequence compares in order, a set by its
+/// membership, and a list of pairs pair by pair.
+fn values_equal(a: &YamlValue, b: &YamlValue) -> bool {
+    match (a, b) {
+        (YamlValue::List(x), YamlValue::List(y)) => {
+            x.len() == y.len() && x.iter().zip(y.iter()).all(|(u, v)| values_equal(u, v))
+        }
+        (YamlValue::Mapping(x), YamlValue::Mapping(y)) => {
+            x.len() == y.len()
+                && x.iter().all(|(key, value)| {
+                    y.iter()
+                        .find(|(other, _)| other == key)
+                        .is_some_and(|(_, other_value)| values_equal(value, other_value))
+                })
+        }
+        (YamlValue::Set(x), YamlValue::Set(y)) => {
+            x.len() == y.len() && x.iter().all(|member| y.contains(member))
+        }
+        (YamlValue::Pairs(x), YamlValue::Pairs(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y.iter())
+                    .all(|((k1, v1), (k2, v2))| k1 == k2 && values_equal(v1, v2))
+        }
+        _ => YamlKey::of(a) == YamlKey::of(b),
     }
 }
 
@@ -215,6 +265,12 @@ impl PartialEq for YamlKey {
             (YamlKey::AwareDateTime(ai, _), YamlKey::AwareDateTime(bi, _)) => ai == bi,
             // A naive datetime and an aware datetime never compare
             // equal in Python, and neither compares to a date.
+            (YamlKey::List(_), YamlKey::List(_))
+            | (YamlKey::Mapping(_), YamlKey::Mapping(_))
+            | (YamlKey::Set(_), YamlKey::Set(_))
+            | (YamlKey::Pairs(_), YamlKey::Pairs(_)) => {
+                values_equal(&key_to_value(self), &key_to_value(other))
+            }
             _ => false,
         }
     }

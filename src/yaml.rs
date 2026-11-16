@@ -26,7 +26,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dates::{civil_from_days, days_from_civil, valid_calendar_date};
-use crate::yamlvalue::{YamlKey, YamlValue};
+use crate::yamlvalue::{key_to_value, YamlKey, YamlValue};
 
 /// The deepest nesting the reader accepts.
 pub const MAX_YAML_NESTING: usize = 4000;
@@ -288,6 +288,12 @@ fn key_repr(key: &YamlKey) -> String {
         YamlKey::NaiveDateTime(instant) => datetime_repr(*instant, None),
         YamlKey::AwareDateTime(instant, offset) => datetime_repr(*instant, Some(*offset)),
         YamlKey::Bytes(bytes) => bytes_repr(bytes),
+        // A container key spells as the value it stands as
+        // spells, the spelling PORT10-3 states, so the one
+        // spelling machinery carries both standings.
+        YamlKey::List(_) | YamlKey::Mapping(_) | YamlKey::Set(_) | YamlKey::Pairs(_) => {
+            python_repr(&key_to_value(key))
+        }
     }
 }
 
@@ -1439,14 +1445,100 @@ fn mapping_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
     match split_key_properties(text, bindings) {
         KeySplit::Props(_, offset) => {
             find_key_split(&text[offset..]).is_some()
+                || flow_key_split(&text[offset..]).is_some()
                 || explicit_opening(&text[offset..])
                 || alias_key_shape(&text[offset..])
         }
         KeySplit::None => {
-            find_key_split(text).is_some() || explicit_opening(text) || alias_key_shape(text)
+            find_key_split(text).is_some()
+                || flow_key_split(text).is_some()
+                || explicit_opening(text)
+                || alias_key_shape(text)
         }
         KeySplit::Refuse => false,
     }
+}
+
+/// Where a flow collection standing as a compact key ends on
+/// its line, as the byte index just past the collection and
+/// the byte index just past the pair's colon, when the text
+/// opens with a flow collection and the pair's colon stands
+/// behind it with a space or the line's end behind the colon.
+/// The walk counts brackets with quoted spans taken into
+/// account, a quote opening only where a scalar can stand in
+/// flow, at the text's start or behind a bracket or a comma
+/// or a colon or a space, so a quote standing inside a plain
+/// scalar opens nothing. The walk only routes the line; the
+/// flow reading itself still decides what the collection
+/// reads as.
+fn flow_key_split(text: &str) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    if !matches!(bytes.first(), Some(b'[') | Some(b'{')) {
+        return None;
+    }
+    let mut depth = 0i64;
+    let mut quote: Option<u8> = None;
+    let mut prev = 0u8;
+    let mut index = 0usize;
+    let mut end = None;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        match quote {
+            Some(b'"') => {
+                if byte == b'\\' {
+                    index += 1;
+                } else if byte == b'"' {
+                    quote = None;
+                }
+            }
+            Some(b'\'') => {
+                if byte == b'\'' {
+                    if bytes.get(index + 1) == Some(&b'\'') {
+                        index += 1;
+                    } else {
+                        quote = None;
+                    }
+                }
+            }
+            _ => match byte {
+                b'"' | b'\''
+                    if index == 0 || matches!(prev, b'[' | b'{' | b',' | b':' | b' ' | b'\t') =>
+                {
+                    quote = Some(byte);
+                }
+                b'[' | b'{' => depth += 1,
+                b']' | b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(index + 1);
+                        break;
+                    }
+                    if depth < 0 {
+                        return None;
+                    }
+                }
+                b'#' if index > 0 && matches!(prev, b' ' | b'\t') => return None,
+                _ => {}
+            },
+        }
+        if !matches!(byte, b' ' | b'\t') {
+            prev = byte;
+        }
+        index += 1;
+    }
+    let end = end?;
+    let mut colon = end;
+    while colon < bytes.len() && matches!(bytes[colon], b' ' | b'\t') {
+        colon += 1;
+    }
+    if bytes.get(colon) != Some(&b':') {
+        return None;
+    }
+    let after = colon + 1;
+    if after < bytes.len() && !matches!(bytes[after], b' ' | b'\t') {
+        return None;
+    }
+    Some((end, after))
 }
 
 /// Whether a line's text opens a pair whose key is an alias,
@@ -2697,7 +2789,53 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     if cursor.peek_content().is_some() {
         return None;
     }
+    if !keys_stand_hashable(&value) {
+        return None;
+    }
     Some(value)
+}
+
+/// A scalar key, the kind a mapping's keys and a set's
+/// members must stand as.
+fn key_is_scalar(key: &YamlKey) -> bool {
+    matches!(
+        key,
+        YamlKey::Null
+            | YamlKey::Bool(_)
+            | YamlKey::Int(_)
+            | YamlKey::BigInt(_)
+            | YamlKey::Float(_)
+            | YamlKey::Text(_)
+            | YamlKey::Date(_)
+            | YamlKey::NaiveDateTime(_)
+            | YamlKey::AwareDateTime(_, _)
+            | YamlKey::Bytes(_)
+    )
+}
+
+/// The border PORT10-2 states, walked over the built
+/// document. The runtime reading builds a mapping or a set
+/// only from keys it can hash, so a container standing as a
+/// mapping's key or as a set's member refuses the reading
+/// whole, while a list of pairs builds neither and its keys
+/// stand as any value. The reader builds all three standings
+/// from the one key model, so the border is held here, over
+/// the finished value: every mapping's keys and every set's
+/// members must stand as scalar keys, and a pair's key is
+/// walked as the value it stands as, the mappings and sets
+/// inside it held to the same border.
+fn keys_stand_hashable(value: &YamlValue) -> bool {
+    match value {
+        YamlValue::Mapping(pairs) => pairs
+            .iter()
+            .all(|(key, item)| key_is_scalar(key) && keys_stand_hashable(item)),
+        YamlValue::Set(members) => members.iter().all(key_is_scalar),
+        YamlValue::Pairs(pairs) => pairs.iter().all(|(key, item)| {
+            keys_stand_hashable(&key_to_value(key)) && keys_stand_hashable(item)
+        }),
+        YamlValue::List(items) => items.iter().all(keys_stand_hashable),
+        _ => true,
+    }
 }
 
 /// Read the block standing on the following lines under a
@@ -2853,6 +2991,38 @@ fn colon_opening(text: &str) -> bool {
 /// unhashable key dies. Hands back the key and whether the
 /// pair merges, the merge standing on the merge tag or on the
 /// plain merge spelling standing as the node's own text.
+/// Read a block collection standing as an explicit key, a
+/// sequence or a mapping whose first line stands on the
+/// question mark line behind the mark. The collection's
+/// first line is laid into the line table at the column its
+/// first token stands at, the question line's own indent
+/// plus the raw key text's offset in it, and the block
+/// reading runs over it and the lines behind it as it runs
+/// in value position, the question line standing restored
+/// behind the cursor when the reading is done.
+fn read_collection_key(
+    raw: &str,
+    text: &str,
+    cursor: &mut Cursor,
+    indent: usize,
+    depth: usize,
+    state: &mut ReadState,
+) -> Option<Built> {
+    let key_line_index = cursor.pos.checked_sub(1)?;
+    let original = cursor.lines[key_line_index].clone();
+    let column = original.indent + (original.text.len() - raw.len());
+    cursor.lines[key_line_index] = Line {
+        indent: column,
+        text: text.to_string(),
+        raw: text.to_string(),
+        has_break: original.has_break,
+    };
+    cursor.pos = key_line_index;
+    let built = parse_block(cursor, indent, depth, state);
+    cursor.lines[key_line_index] = original;
+    built
+}
+
 fn read_explicit_key_text(
     text: &str,
     cursor: &mut Cursor,
@@ -2871,8 +3041,25 @@ fn read_explicit_key_text(
         ),
         KeySplit::Props(props, offset) => (props, offset),
     };
+    // A collection tag standing in front of a collection
+    // key is the key node's own tag, as it is in the block
+    // mapping's compact reading: the original tag is kept
+    // beside the key properties for the branches that read
+    // a collection, and the branches that read a scalar
+    // still refuse under the class as they refuse today.
+    let mut collection_tag: Option<Tag> = None;
     if key_props.tag == KeyTag::Refuse {
-        return None;
+        match split_properties(text, &state.bindings) {
+            PropSplit::Props(props, _)
+                if matches!(
+                    props.tag,
+                    Tag::Seq | Tag::Map | Tag::Set | Tag::Omap | Tag::Pairs
+                ) =>
+            {
+                collection_tag = Some(props.tag.clone());
+            }
+            _ => return None,
+        }
     }
     let merge_tag = key_props.tag == KeyTag::Merge;
     let raw = text[key_offset..].trim_start();
@@ -2896,6 +3083,9 @@ fn read_explicit_key_text(
         return Some((key, false));
     }
     let value = if first == '"' || first == '\'' {
+        if collection_tag.is_some() {
+            return None;
+        }
         let (quoted, rest) = read_block_quoted(raw, cursor, first == '"')?;
         check_trailing(&rest)?;
         match &key_props.tag {
@@ -2906,7 +3096,10 @@ fn read_explicit_key_text(
         let built = parse_inline_value(raw, cursor, indent, indent, depth, state)?;
         match &key_props.tag {
             KeyTag::Convert(tag) => apply_tag(tag, built)?.value,
-            _ => built.value,
+            _ => match &collection_tag {
+                Some(tag) => apply_tag(tag, built)?.value,
+                None => built.value,
+            },
         }
     } else {
         let plain_text = cut_comment(raw).trim();
@@ -2916,8 +3109,23 @@ fn read_explicit_key_text(
         {
             // A dash opening or a mapping standing on the
             // question mark line opens a collection as the
-            // key node, and a collection standing as a key
-            // refuses, as the runtime's unhashable key dies.
+            // key node. The collection builds as it builds
+            // in value position, and whether it may stand
+            // as this mapping's key is the border the reader
+            // holds over the built document, a pair's key
+            // carrying a collection where an ordinary
+            // mapping's key refuses it.
+            let built = read_collection_key(raw, plain_text, cursor, indent, depth, state)?;
+            let key_value = match &key_props.tag {
+                KeyTag::Convert(tag) => apply_tag(tag, built)?.value,
+                _ => match &collection_tag {
+                    Some(tag) => apply_tag(tag, built)?.value,
+                    None => built.value,
+                },
+            };
+            return Some((YamlKey::of(&key_value)?, false));
+        }
+        if collection_tag.is_some() {
             return None;
         }
         match &key_props.tag {
@@ -2979,8 +3187,27 @@ fn parse_mapping(
             ),
             KeySplit::Props(props, offset) => (props, offset),
         };
+        // A collection tag standing in front of a flow
+        // collection key is the key node's own tag, not a
+        // key conversion, so it stands apart from the tag
+        // classes of key position: the original tag is kept
+        // beside the key properties for the one branch that
+        // reads such a key, and every other branch still
+        // refuses under the class as it refuses today, the
+        // scalar reading carrying the refusal in its own arm.
+        let mut flow_key_tag: Option<Tag> = None;
         if key_props.tag == KeyTag::Refuse {
-            return None;
+            match split_properties(&line.text, &state.bindings) {
+                PropSplit::Props(props, _)
+                    if matches!(
+                        props.tag,
+                        Tag::Seq | Tag::Map | Tag::Set | Tag::Omap | Tag::Pairs
+                    ) =>
+                {
+                    flow_key_tag = Some(props.tag.clone());
+                }
+                _ => return None,
+            }
         }
         let after_props = &line.text[key_offset..];
         if explicit_opening(after_props) {
@@ -3122,6 +3349,39 @@ fn parse_mapping(
             }
             let key = read_alias_key(state, &name)?;
             (key, false, after_name[1..].trim_start().to_string())
+        } else if let Some((collection_end, rest_start)) = flow_key_split(after_props) {
+            // A flow collection standing as a compact key, the
+            // pair's colon standing behind its closing bracket.
+            // The key node reads as the flow value it is, under
+            // the standings the flow key reading gives a key
+            // under a tag, and an anchor in front of it binds
+            // the key value as it binds a scalar key.
+            let built = parse_inline_value(
+                &after_props[..collection_end],
+                cursor,
+                indent,
+                indent,
+                depth + 1,
+                state,
+            )?;
+            let key_value = match &key_props.tag {
+                KeyTag::Convert(tag) => apply_tag(tag, built)?.value,
+                _ => match &flow_key_tag {
+                    Some(tag) => apply_tag(tag, built)?.value,
+                    None => built.value,
+                },
+            };
+            if let Some(name) = &key_props.anchor {
+                bind_key_anchor(state, name, &key_value)?;
+            }
+            let key = YamlKey::of(&key_value)?;
+            (
+                key,
+                false,
+                line.text[key_offset + rest_start..]
+                    .trim_start()
+                    .to_string(),
+            )
         } else {
             let (key_raw, rest_start) = find_key_split(after_props)?;
             let rest_start = key_offset + rest_start;

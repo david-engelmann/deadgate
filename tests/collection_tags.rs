@@ -202,11 +202,6 @@ fn test_a_list_of_pairs_standing_as_a_key_is_refused() {
     assert_eq!(reads("? !!omap [{x: 1}]\n: 2\n"), None);
 }
 
-#[test]
-fn test_a_pairs_entry_whose_key_is_a_container_is_refused() {
-    assert_eq!(reads("a: !!pairs\n  - !!omap [{x: 1}]: 2\n"), None);
-}
-
 // PORT9-5, the recorded spelling of a set.
 
 #[test]
