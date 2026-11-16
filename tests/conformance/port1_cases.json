@@ -30909,6 +30909,820 @@
     "expect": {
      "err": "ConstructorError"
     }
+   },
+   {
+    "name": "pairs entry whose key is a sequence",
+    "text": "a: !!pairs\n  - [1, 2]: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "1"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is a mapping",
+    "text": "a: !!pairs\n  - {x: 1}: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "x"
+              },
+              {
+               "t": "int",
+               "v": "1"
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is a set",
+    "text": "a: !!pairs\n  - !!set {p, q}: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "set",
+            "v": [
+             {
+              "t": "str",
+              "v": "p"
+             },
+             {
+              "t": "str",
+              "v": "q"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is a list of pairs",
+    "text": "a: !!pairs\n  - !!omap [x: 1]: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "pairs",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "x"
+              },
+              {
+               "t": "int",
+               "v": "1"
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "ordered map entry whose key is a sequence",
+    "text": "a: !!omap\n  - [1, 2]: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "1"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs in flow form with a sequence key",
+    "text": "a: !!pairs [{[1, 2]: v}]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "1"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is a block sequence",
+    "text": "a: !!pairs\n  - ? - 1\n      - 2\n    : v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "1"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is a block mapping",
+    "text": "a: !!pairs\n  - ? x: 1\n    : v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "x"
+              },
+              {
+               "t": "int",
+               "v": "1"
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs key holding a list of pairs with a sequence key",
+    "text": "a: !!pairs\n  - !!omap [[9]: deep]: top\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "pairs",
+            "v": [
+             [
+              {
+               "t": "list",
+               "v": [
+                {
+                 "t": "int",
+                 "v": "9"
+                }
+               ]
+              },
+              {
+               "t": "str",
+               "v": "deep"
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "top"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs with duplicate sequence keys",
+    "text": "a: !!pairs\n  - [1, 2]: x\n  - [1, 2]: y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "1"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "x"
+           }
+          ],
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "1"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "y"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is an empty sequence",
+    "text": "a: !!pairs\n  - []: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": []
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is an empty mapping",
+    "text": "a: !!pairs\n  - {}: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "obj",
+            "v": []
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs key that is a mapping with a sequence value",
+    "text": "a: !!pairs\n  - {x: [1, 2]}: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "x"
+              },
+              {
+               "t": "list",
+               "v": [
+                {
+                 "t": "int",
+                 "v": "1"
+                },
+                {
+                 "t": "int",
+                 "v": "2"
+                }
+               ]
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs key that is a mapping with a pairs value",
+    "text": "a: !!pairs\n  - {x: !!pairs [y: 2]}: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "x"
+              },
+              {
+               "t": "pairs",
+               "v": [
+                [
+                 {
+                  "t": "str",
+                  "v": "y"
+                 },
+                 {
+                  "t": "int",
+                  "v": "2"
+                 }
+                ]
+               ]
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs entry whose key is a sequence carrying a null",
+    "text": "a: !!pairs\n  - [~, 2]: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "null"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "an alias of a sequence as a pairs key",
+    "text": "defs: &k [7, 8]\nuse: !!pairs\n  - *k: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "defs"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "int",
+           "v": "7"
+          },
+          {
+           "t": "int",
+           "v": "8"
+          }
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "use"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "int",
+              "v": "7"
+             },
+             {
+              "t": "int",
+              "v": "8"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "a merged mapping as a pairs key",
+    "text": "src: &m {a: 1}\nuse: !!pairs [{? {<<: *m, b: 2}: v}]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "src"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "a"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "use"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "a"
+              },
+              {
+               "t": "int",
+               "v": "1"
+              }
+             ],
+             [
+              {
+               "t": "str",
+               "v": "b"
+              },
+              {
+               "t": "int",
+               "v": "2"
+              }
+             ]
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "pairs value carrying a mapping with a sequence key",
+    "text": "a: !!pairs\n  - k: {[1, 2]: v}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "ordered map entry with two pairs and a container key",
+    "text": "a: !!omap\n  - {[1]: x, y: 2}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "a set as a pairs key with an unhashable member",
+    "text": "a: !!pairs\n  - !!set {? !!pairs [x: y]}: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "pairs standing as a key in block form",
+    "text": "? !!pairs [x: 1]\n: 2\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
    }
   ],
   "yaml_strings": [
