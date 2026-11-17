@@ -4524,12 +4524,22 @@ fn parse_block_scalar(
 /// lets it divide. An entry's properties, an anchor or an
 /// alias or a tag, stand before its scalar and do not begin
 /// it, so a quoted scalar behind a property still opens.
+/// A hash opens a comment only where no plain content
+/// stands directly before it in its entry, under PORT12-3.
+/// A hash standing directly behind plain content is content
+/// of the entry's plain scalar and opens nothing. Plain
+/// content stands directly before a hash where the character
+/// before the hash is a character of the entry's plain
+/// scalar, and a blank or a flow bracket or a comma or a
+/// dividing colon or the close of a quoted span or of a
+/// nested collection breaks the standing.
 fn flow_closed(text: &str) -> bool {
     let chars: Vec<char> = text.chars().collect();
     let mut depth = 0i64;
     let mut index = 0usize;
     let mut quote: Option<char> = None;
     let mut scalar_begun = false;
+    let mut plain_attached = false;
     while index < chars.len() {
         let ch = chars[index];
         match quote {
@@ -4540,6 +4550,7 @@ fn flow_closed(text: &str) -> bool {
                 '"' => {
                     quote = None;
                     scalar_begun = true;
+                    plain_attached = false;
                 }
                 _ => {}
             },
@@ -4550,6 +4561,7 @@ fn flow_closed(text: &str) -> bool {
                     } else {
                         quote = None;
                         scalar_begun = true;
+                        plain_attached = false;
                     }
                 }
             }
@@ -4557,11 +4569,19 @@ fn flow_closed(text: &str) -> bool {
                 '"' | '\'' => {
                     if !scalar_begun {
                         quote = Some(ch);
+                        plain_attached = false;
+                    } else {
+                        // A quote standing behind the plain
+                        // content of its entry is a character
+                        // of that entry's plain scalar, so the
+                        // content attaches through it.
+                        plain_attached = true;
                     }
                 }
                 '[' | '{' => {
                     depth += 1;
                     scalar_begun = false;
+                    plain_attached = false;
                 }
                 ']' | '}' => {
                     depth -= 1;
@@ -4569,20 +4589,45 @@ fn flow_closed(text: &str) -> bool {
                         return true;
                     }
                     scalar_begun = true;
+                    plain_attached = false;
                 }
                 ',' => {
                     scalar_begun = false;
+                    plain_attached = false;
                 }
                 ':' => {
                     let next = chars.get(index + 1);
                     scalar_begun = !(next.is_none()
                         || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{')));
+                    // The colon carries the standing only
+                    // where plain content stood directly
+                    // before it and the colon does not
+                    // divide, under the amendment to
+                    // PORT12-3. A colon at an entry's start
+                    // or behind a closed collection is no
+                    // character of a plain scalar.
+                    plain_attached = plain_attached && scalar_begun;
+                }
+                '?' if !scalar_begun => {
+                    // The explicit key mark at an entry's
+                    // start, standing before its scalar and
+                    // not beginning it, under the amendment
+                    // to PORT12-3. The mark is no character
+                    // of a plain scalar, so a hash standing
+                    // directly behind it opens a comment.
+                    plain_attached = false;
                 }
                 '#' => {
-                    // A comment runs to the end of its line.
-                    while index + 1 < chars.len() && chars[index + 1] != '\n' {
-                        index += 1;
+                    if !plain_attached {
+                        // A comment runs to the end of its line.
+                        while index + 1 < chars.len() && chars[index + 1] != '\n' {
+                            index += 1;
+                        }
                     }
+                    // A hash standing directly behind the
+                    // plain content of its entry is content
+                    // of that entry's plain scalar, under
+                    // PORT12-3, and opens nothing.
                 }
                 '&' | '*' | '!' if !scalar_begun => {
                     // A property of the entry, standing before
@@ -4597,9 +4642,12 @@ fn flow_closed(text: &str) -> bool {
                         index += 1;
                     }
                 }
-                ' ' | '\t' | '\n' => {}
+                ' ' | '\t' | '\n' => {
+                    plain_attached = false;
+                }
                 _ => {
                     scalar_begun = true;
+                    plain_attached = true;
                 }
             },
         }

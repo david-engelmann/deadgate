@@ -43,10 +43,7 @@ fn test_a_hash_inside_a_plain_scalar_spanning_words_reads() {
 
 #[test]
 fn test_hashes_inside_flow_plain_scalars_read_across_a_mapping() {
-    assert_eq!(
-        reads("{a#b: c#d}"),
-        Some("{'a#b': 'c#d'}".to_string())
-    );
+    assert_eq!(reads("{a#b: c#d}"), Some("{'a#b': 'c#d'}".to_string()));
 }
 
 #[test]
@@ -113,4 +110,37 @@ fn test_a_comment_behind_a_blank_inside_a_flow_entry_still_reads() {
 #[test]
 fn test_a_bracket_standing_inside_a_comment_opens_nothing() {
     assert_eq!(reads("[a # [\n, x]"), Some("['a', 'x']".to_string()));
+}
+
+#[test]
+fn test_a_hash_behind_an_entry_start_question_mark_still_refuses() {
+    assert_eq!(reads("[?#b, x]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_question_mark_in_a_later_entry_still_refuses() {
+    assert_eq!(reads("[x, ?#b, y]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_question_mark_at_a_mapping_entry_still_refuses() {
+    assert_eq!(reads("{?#b: 1}"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_colon_at_an_entry_start_still_refuses() {
+    assert_eq!(reads("[:#b, x]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_colon_behind_a_closed_collection_still_refuses() {
+    assert_eq!(reads("[[a]:#b, x]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_colon_behind_a_quoted_key_still_opens_a_comment() {
+    assert_eq!(
+        reads("{\"k\":# }\n  value}"),
+        Some("{'k': 'value'}".to_string())
+    );
 }
