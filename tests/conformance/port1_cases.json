@@ -32167,6 +32167,495 @@
     "expect": {
      "err": "ParserError"
     }
+   },
+   {
+    "name": "flow plain scalar carrying a hash",
+    "text": "[a#b, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a#b"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash scalar as a flow mapping value",
+    "text": "a: [a#b, x]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "str",
+           "v": "a#b"
+          },
+          {
+           "t": "str",
+           "v": "x"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash scalar as a flow key",
+    "text": "{a#b: 1}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a#b"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash at a plain scalar's end",
+    "text": "[a#, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a#"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash inside a plain scalar spanning words",
+    "text": "[a# b, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a# b"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hashes across a flow mapping",
+    "text": "{a#b: c#d}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a#b"
+        },
+        {
+         "t": "str",
+         "v": "c#d"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "a colon inside a flow plain scalar carrying a hash",
+    "text": "[a:#b]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a:#b"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash carrying scalars across a flow mapping",
+    "text": "{k: a#b, k2: c#d}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "a#b"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "k2"
+        },
+        {
+         "t": "str",
+         "v": "c#d"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "doubled hashes inside a flow plain scalar",
+    "text": "[a##b, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a##b"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash inside a flow mapping value",
+    "text": "{k: b#c}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "k"
+        },
+        {
+         "t": "str",
+         "v": "b#c"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow collection spanning lines carrying a hash",
+    "text": "a: [[x, a#b],\n  y]\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "list",
+           "v": [
+            {
+             "t": "str",
+             "v": "x"
+            },
+            {
+             "t": "str",
+             "v": "a#b"
+            }
+           ]
+          },
+          {
+           "t": "str",
+           "v": "y"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "nested flow collection carrying a hash",
+    "text": "[[a#b], x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "list",
+        "v": [
+         {
+          "t": "str",
+          "v": "a#b"
+         }
+        ]
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash scalar beside a quoted scalar",
+    "text": "['quoted', a#b]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "quoted"
+       },
+       {
+        "t": "str",
+        "v": "a#b"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment after a hash carrying flow collection",
+    "text": "[a#b, x] # comment\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a#b"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash scalar standing as a pairs key",
+    "text": "a: !!pairs\n  - [a#b, x]: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "pairs",
+         "v": [
+          [
+           {
+            "t": "list",
+            "v": [
+             {
+              "t": "str",
+              "v": "a#b"
+             },
+             {
+              "t": "str",
+              "v": "x"
+             }
+            ]
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "hash scalar behind an anchor in flow",
+    "text": "[&a a#b, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a#b"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "several hash scalars in one collection",
+    "text": "[a#b, c#d, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a#b"
+       },
+       {
+        "t": "str",
+        "v": "c#d"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment at an entry start inside a flow collection",
+    "text": "[a, #b\n x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment after a blank inside a flow entry",
+    "text": "[a #b\n, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment swallowing a closing bracket",
+    "text": "[a #b, x]\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "unterminated flow collection carrying a hash",
+    "text": "[a#b, x\n",
+    "expect": {
+     "err": "ParserError"
+    }
+   },
+   {
+    "name": "hash at the start of a line inside a flow collection",
+    "text": "[a,\n#b\nx]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "bracket standing inside a comment",
+    "text": "[a # [\n, x]\n",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "a"
+       },
+       {
+        "t": "str",
+        "v": "x"
+       }
+      ]
+     }
+    }
    }
   ],
   "yaml_strings": [
