@@ -32656,6 +32656,715 @@
       ]
      }
     }
+   },
+   {
+    "name": "quoted merge spelling at an explicit key through an alias",
+    "text": "a: &m \"<<\"\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tagged merge spelling at an explicit key through an alias",
+    "text": "a: &m !!str <<\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "literal spelled merge spelling at an explicit key through an alias",
+    "text": "a: &m |-\n  <<\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "folded spelled merge spelling at an explicit key through an alias",
+    "text": "a: &m >-\n  <<\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "single quoted merge spelling at an explicit key through an alias",
+    "text": "a: &m '<<'\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling at a compact block key through an alias",
+    "text": "a: &m \"<<\"\n*m: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling at a flow compact key through an alias",
+    "text": "a: &m \"<<\"\nb: {*m: v}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "<<"
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling at a flow explicit key through an alias",
+    "text": "a: &m \"<<\"\nb: {? *m: v}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "<<"
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling nested inside flow collections through an alias",
+    "text": "a: &m \"<<\"\nb: {x: {*m: v}}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "x"
+           },
+           {
+            "t": "obj",
+            "v": [
+             [
+              {
+               "t": "str",
+               "v": "<<"
+              },
+              {
+               "t": "str",
+               "v": "v"
+              }
+             ]
+            ]
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling through an alias key beside a direct merge",
+    "text": "src: &s {p: 1}\na: &m \"<<\"\nouter:\n  <<: *s\n  *m: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "src"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "p"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ]
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "outer"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "p"
+           },
+           {
+            "t": "int",
+            "v": "1"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "<<"
+           },
+           {
+            "t": "str",
+            "v": "v"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling through an alias key duplicated by a direct string key",
+    "text": "a: &m \"<<\"\n? *m\n: first\n\"<<\": second\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "second"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored quoted merge spelling standing as a key through an alias",
+    "text": "&m \"<<\": 1\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored str tagged merge spelling standing as a key through an alias",
+    "text": "&m !!str <<: 1\n? *m\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "quoted merge spelling through an alias in value position",
+    "text": "a: &m \"<<\"\nb: *m\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "str tagged scalar at an explicit key through an alias",
+    "text": "a: &t !!str yes\n? *t\n: v\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "yes"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "yes"
+        },
+        {
+         "t": "str",
+         "v": "v"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "direct merge key with an anchor in front of it",
+    "text": "a: 1\n&m <<: {b: 2}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "direct merge key with the merge tag in front of it",
+    "text": "a: 1\n!!merge <<: {b: 2}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "direct merge key with an anchor and the merge tag in front of it",
+    "text": "a: 1\n&m !!merge <<: {b: 2}\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "plain anchored merge spelling refusing at an alias key",
+    "text": "a: &m <<\n? *m\n: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "merge tagged anchored merge spelling refusing",
+    "text": "a: &m !!merge <<\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "merge tagged merge spelling in value position refusing",
+    "text": "x: !!merge <<\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "plain merge spelling in entry position refusing",
+    "text": "- <<\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "anchored plain merge spelling in entry position refusing",
+    "text": "- &m <<\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "anchored set refusing at an alias key",
+    "text": "a: &s !!set {x, y}\n? *s\n: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "anchored list of pairs refusing at an alias key",
+    "text": "a: &p !!omap [x: 1]\n? *p\n: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored plain merge key refusing",
+    "text": "&m <<: {b: 2}\n? *m\n: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored merge tagged key refusing",
+    "text": "&m !!merge <<: {b: 2}\n? *m\n: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias compact key to an anchored plain merge key refusing",
+    "text": "&m <<: {b: 2}\n*m: v\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored plain merge key in flow refusing",
+    "text": "{&m <<: {b: 2}, *m: v}\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key with a mapping value refuses",
+    "text": "&m <<: {b: 2}\n? *m\n: {c: 3}\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
    }
   ],
   "yaml_strings": [
