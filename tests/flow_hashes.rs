@@ -111,3 +111,28 @@ fn test_a_comment_behind_a_blank_inside_a_flow_entry_still_reads() {
 fn test_a_bracket_standing_inside_a_comment_opens_nothing() {
     assert_eq!(reads("[a # [\n, x]"), Some("['a', 'x']".to_string()));
 }
+
+#[test]
+fn test_a_hash_behind_an_entry_start_question_mark_still_refuses() {
+    assert_eq!(reads("[?#b, x]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_question_mark_in_a_later_entry_still_refuses() {
+    assert_eq!(reads("[x, ?#b, y]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_question_mark_at_a_mapping_entry_still_refuses() {
+    assert_eq!(reads("{?#b: 1}"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_colon_at_an_entry_start_still_refuses() {
+    assert_eq!(reads("[:#b, x]"), None);
+}
+
+#[test]
+fn test_a_hash_behind_a_colon_behind_a_closed_collection_still_refuses() {
+    assert_eq!(reads("[[a]:#b, x]"), None);
+}
