@@ -4599,7 +4599,23 @@ fn flow_closed(text: &str) -> bool {
                     let next = chars.get(index + 1);
                     scalar_begun = !(next.is_none()
                         || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{')));
-                    plain_attached = scalar_begun;
+                    // The colon carries the standing only
+                    // where plain content stood directly
+                    // before it and the colon does not
+                    // divide, under the amendment to
+                    // PORT12-3. A colon at an entry's start
+                    // or behind a closed collection is no
+                    // character of a plain scalar.
+                    plain_attached = plain_attached && scalar_begun;
+                }
+                '?' if !scalar_begun => {
+                    // The explicit key mark at an entry's
+                    // start, standing before its scalar and
+                    // not beginning it, under the amendment
+                    // to PORT12-3. The mark is no character
+                    // of a plain scalar, so a hash standing
+                    // directly behind it opens a comment.
+                    plain_attached = false;
                 }
                 '#' => {
                     if !plain_attached {
