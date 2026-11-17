@@ -1078,12 +1078,16 @@ impl Built {
 
 /// A value bound under an anchor, with the tally the value
 /// cost to build, so a copy of it counts what the copy
-/// resolves inside it.
+/// resolves inside it. The record also carries whether
+/// the value stood as a merge key where it was bound, by
+/// the plain spelling or under the merge tag, the standing
+/// PORT13-3 tells apart at an alias standing as a key.
 #[derive(Clone)]
 struct AnchorVal {
     value: YamlValue,
     tally: usize,
     items: Option<Vec<usize>>,
+    merge_key: bool,
 }
 
 /// The expansion bound of PORT4, standing across one
@@ -1119,6 +1123,7 @@ impl ReadState {
                 value: built.value.clone(),
                 tally: built.tally,
                 items: built.items.clone(),
+                merge_key: built.plain_token.as_deref() == Some("<<"),
             },
         );
     }
@@ -3139,7 +3144,7 @@ fn read_explicit_key_text(
             && first != '\''
             && cut_comment(raw).trim() == "<<");
     if let Some(name) = &key_props.anchor {
-        bind_key_anchor(state, name, &value)?;
+        bind_key_anchor(state, name, &value, plain_merge)?;
     }
     let key = YamlKey::of(&value)?;
     Some((key, plain_merge))
@@ -3372,7 +3377,7 @@ fn parse_mapping(
                 },
             };
             if let Some(name) = &key_props.anchor {
-                bind_key_anchor(state, name, &key_value)?;
+                bind_key_anchor(state, name, &key_value, false)?;
             }
             let key = YamlKey::of(&key_value)?;
             (
@@ -3386,15 +3391,15 @@ fn parse_mapping(
             let (key_raw, rest_start) = find_key_split(after_props)?;
             let rest_start = key_offset + rest_start;
             let key_value = read_key_scalar(&key_raw, &key_props.tag)?;
+            let merge_key = key_props.tag == KeyTag::Merge
+                || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific) && key_raw == "<<");
             if let Some(name) = &key_props.anchor {
                 // The anchor standing in front of a key binds
                 // the key scalar, not the mapping the pair
                 // stands in.
-                bind_key_anchor(state, name, &key_value)?;
+                bind_key_anchor(state, name, &key_value, merge_key)?;
             }
             let key = YamlKey::of(&key_value)?;
-            let merge_key = key_props.tag == KeyTag::Merge
-                || (matches!(key_props.tag, KeyTag::None | KeyTag::NonSpecific) && key_raw == "<<");
             (
                 key,
                 merge_key,
@@ -3624,8 +3629,15 @@ fn read_key_scalar(raw: &str, tag: &KeyTag) -> Option<YamlValue> {
 
 /// Bind an anchor name to a key value in the anchor table,
 /// a name bound anywhere in the document or still building
-/// refusing a second binding.
-fn bind_key_anchor(state: &mut ReadState, name: &str, value: &YamlValue) -> Option<()> {
+/// refusing a second binding. The record carries whether
+/// the key stood as a merge key, the standing PORT13-3
+/// tells apart at an alias standing as a key.
+fn bind_key_anchor(
+    state: &mut ReadState,
+    name: &str,
+    value: &YamlValue,
+    merge_key: bool,
+) -> Option<()> {
     if state.bound.contains_key(name) || state.building.contains(name) {
         return None;
     }
@@ -3635,6 +3647,7 @@ fn bind_key_anchor(state: &mut ReadState, name: &str, value: &YamlValue) -> Opti
             value: value.clone(),
             tally: 0,
             items: None,
+            merge_key,
         },
     );
     Some(())
@@ -3642,14 +3655,17 @@ fn bind_key_anchor(state: &mut ReadState, name: &str, value: &YamlValue) -> Opti
 
 /// Read an alias standing where a key stands, the resolved
 /// node standing as the key where it is a scalar. The merge
-/// spelling standing as the resolved text refuses, as the
-/// runtime dies on the plain anchored spelling in its
-/// constructor, and the quoted anchored spelling standing
-/// behind the same text is not told apart here, a narrow
-/// stated limit of this slice.
+/// spelling standing as the resolved text refuses where
+/// the anchored scalar stood as a merge key, by the plain
+/// spelling or under the merge tag, as the runtime dies on
+/// that anchored node in its constructor, and reads where
+/// the anchored scalar carried the spelling under the
+/// string tag, the anchor record carrying the standing
+/// that tells the spellings apart.
 fn read_alias_key(state: &mut ReadState, name: &str) -> Option<YamlKey> {
+    let merge_key = state.bound.get(name).is_some_and(|entry| entry.merge_key);
     let built = state.resolve_alias(name)?;
-    if matches!(&built.value, YamlValue::Text(text) if text == "<<") {
+    if merge_key && matches!(&built.value, YamlValue::Text(text) if text == "<<") {
         return None;
     }
     YamlKey::of(&built.value)
@@ -5117,13 +5133,13 @@ impl<'a> FlowParser<'a> {
                             }
                         }
                     };
-                    if let Some(name) = &key_anchor {
-                        bind_key_anchor(self.state, name, &key_value)?;
-                    }
-                    self.skip_separators();
                     let merge_key = key_tag == KeyTag::Merge
                         || (matches!(key_tag, KeyTag::None | KeyTag::NonSpecific)
                             && key_plain.as_deref() == Some("<<"));
+                    if let Some(name) = &key_anchor {
+                        bind_key_anchor(self.state, name, &key_value, merge_key)?;
+                    }
+                    self.skip_separators();
                     let value = if self.peek() == Some(':') {
                         self.pos += 1;
                         self.skip_separators();
