@@ -136,3 +136,11 @@ fn test_a_hash_behind_a_colon_at_an_entry_start_still_refuses() {
 fn test_a_hash_behind_a_colon_behind_a_closed_collection_still_refuses() {
     assert_eq!(reads("[[a]:#b, x]"), None);
 }
+
+#[test]
+fn test_a_hash_behind_a_colon_behind_a_quoted_key_still_opens_a_comment() {
+    assert_eq!(
+        reads("{\"k\":# }\n  value}"),
+        Some("{'k': 'value'}".to_string())
+    );
+}
