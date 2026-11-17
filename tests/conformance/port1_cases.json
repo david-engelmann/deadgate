@@ -33357,6 +33357,14 @@
     "expect": {
      "err": "ConstructorError"
     }
+   },
+   {
+    "name": "alias key to an anchored merge key with a mapping value refuses",
+    "text": "&m <<: {b: 2}\n? *m\n: {c: 3}\n",
+    "expect": {
+     "err": "port refusal"
+    },
+    "port_stated": true
    }
   ],
   "yaml_strings": [

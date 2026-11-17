@@ -19,6 +19,15 @@ every member is a tuple is the reading of an ordered map or
 a pairs node and is encoded as pairs, wherever it stands,
 a key position among the standings, and a plain list stands
 as a list even standing as a pair's key.
+
+The one case the amendment to PORT13-2 adds stands as a
+port stated refusal, in the standing form the third
+slice's generator sets. Its document is the limit that
+amendment names, an alias key to an anchored merge key
+whose pair value can merge, and its recorded answer is
+the port's contracted refusal, the runtime reading of
+the document standing measured in the contract beside
+the amendment.
 """
 
 import datetime
@@ -147,7 +156,23 @@ CORPUS = [
     ("alias key to an anchored merge tagged key refusing", "&m !!merge <<: {b: 2}\n? *m\n: v\n"),
     ("alias compact key to an anchored plain merge key refusing", "&m <<: {b: 2}\n*m: v\n"),
     ("alias key to an anchored plain merge key in flow refusing", "{&m <<: {b: 2}, *m: v}\n"),
+    ("alias key to an anchored merge key with a mapping value refuses", "&m <<: {b: 2}\n? *m\n: {c: 3}\n"),
 ]
+
+
+# The border case the port keeps refused while the runtime
+# reading reads it, the standing limit the amendment to
+# PORT13-2 names. Its recording stands as a port stated
+# refusal, in the standing form.
+PORT_REFUSALS = {
+    "alias key to an anchored merge key with a mapping value refuses",
+}
+
+
+def corpus_expect(name, text):
+    if name in PORT_REFUSALS:
+        return {"err": "port refusal"}, True
+    return recorded(text), False
 
 
 def main():
@@ -161,7 +186,10 @@ def main():
     values = sections["yaml_values"]
     standing_by_name = {case.get("name"): case for case in values}
     for name, text in CORPUS:
-        case = {"name": name, "text": text, "expect": recorded(text)}
+        expect, port_stated = corpus_expect(name, text)
+        case = {"name": name, "text": text, "expect": expect}
+        if port_stated:
+            case["port_stated"] = True
         if name in standing_by_name:
             if json.dumps(standing_by_name[name], sort_keys=True) != json.dumps(
                 case, sort_keys=True
