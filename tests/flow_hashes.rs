@@ -43,10 +43,7 @@ fn test_a_hash_inside_a_plain_scalar_spanning_words_reads() {
 
 #[test]
 fn test_hashes_inside_flow_plain_scalars_read_across_a_mapping() {
-    assert_eq!(
-        reads("{a#b: c#d}"),
-        Some("{'a#b': 'c#d'}".to_string())
-    );
+    assert_eq!(reads("{a#b: c#d}"), Some("{'a#b': 'c#d'}".to_string()));
 }
 
 #[test]
