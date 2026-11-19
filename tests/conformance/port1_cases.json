@@ -33362,9 +33362,997 @@
     "name": "alias key to an anchored merge key with a mapping value refuses",
     "text": "&m <<: {b: 2}\n? *m\n: {c: 3}\n",
     "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a mapping value at an explicit key",
+    "text": "&m <<: {b: 2}\n? *m\n: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key with a scalar value refusing",
+    "text": "&m <<: {b: 2}\n? *m\n: v",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a mapping value at a compact key",
+    "text": "&m <<: {b: 2}\n*m: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a mapping value in flow",
+    "text": "{&m <<: {b: 2}, *m: {c: 3}}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a list of mappings",
+    "text": "&m <<: {b: 2}\n? *m\n: [{c: 3}]",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging an alias to a mapping",
+    "text": "src: &s {c: 3}\n&m <<: {b: 2}\n? *m\n: *s",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "src"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "3"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key standing as an explicit key merging through an alias key",
+    "text": "? &m !!merge <<\n: {b: 2}\n? *m\n: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key refusing a list carrying a scalar",
+    "text": "&m <<: {b: 2}\n? *m\n: [{c: 3}, 4]",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key refusing an empty value",
+    "text": "&m <<: {b: 2}\n? *m\n:",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key with a set standing as its value",
+    "text": "&m <<: {b: 2}\n? *m\n: !!set {c}",
+    "expect": {
      "err": "port refusal"
     },
     "port_stated": true
+   },
+   {
+    "name": "alias key to an anchored merge key merging twice in one mapping",
+    "text": "&m <<: {b: 2}\n? *m\n: {c: 3}\n? *m\n: {d: 4}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "d"
+        },
+        {
+         "t": "int",
+         "v": "4"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a value carrying its own merge",
+    "text": "&m <<: {b: 2}\n? *m\n: {<<: {e: 5}, c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "e"
+        },
+        {
+         "t": "int",
+         "v": "5"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging in a nested mapping",
+    "text": "outer:\n  &m <<: {b: 2}\n  ? *m\n  : {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "outer"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "b"
+           },
+           {
+            "t": "int",
+            "v": "2"
+           }
+          ],
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "3"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a value carrying its own anchor",
+    "text": "&m <<: {b: 2}\n? *m\n: &v {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key to an anchored merge key merging a block mapping behind the colon",
+    "text": "&m <<: {b: 2}\n? *m\n:\n  c: 3",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key standing as a set member refusing an empty value",
+    "text": "&m <<: {b: 2}\nt: !!set\n  ? *m\n",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "merge key standing as a pair in a set",
+    "text": "!!set\n? <<\n: {b: 2}",
+    "expect": {
+     "ok": {
+      "t": "set",
+      "v": [
+       {
+        "t": "str",
+        "v": "b"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored merge key defined in value position refusing at a mapping value",
+    "text": "a: &m <<\n? *m\n: {c: 3}",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "anchored merge key defined in value position refusing at a scalar value",
+    "text": "a: &m <<\n? *m\n: v",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "quoted merge spelling standing through an alias key with a mapping value",
+    "text": "a: &m \"<<\"\n? *m\n: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "<<"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "<<"
+        },
+        {
+         "t": "obj",
+         "v": [
+          [
+           {
+            "t": "str",
+            "v": "c"
+           },
+           {
+            "t": "int",
+            "v": "3"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key with other text refusing a scalar value through an alias key",
+    "text": "&m !!merge foo: {b: 2}\n? *m\n: v",
+    "expect": {
+     "err": "ConstructorError"
+    }
+   },
+   {
+    "name": "merge tagged key with other text merging a mapping value through an alias key",
+    "text": "&m !!merge foo: {b: 2}\n? *m\n: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key with other text merging at a compact key",
+    "text": "&m !!merge foo: {b: 2}\n*m: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key with other text merging in flow",
+    "text": "{&m !!merge foo: {b: 2}, *m: {c: 3}}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key with other text standing as a direct key",
+    "text": "!!merge foo: {b: 2}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key with a boolean text merging through an alias key",
+    "text": "&m !!merge yes: {b: 2}\n? *m\n: {c: 3}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key with other text merging a list of mappings through an alias key",
+    "text": "&m !!merge foo: {b: 2}\n? *m\n: [{c: 3}]",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "c"
+        },
+        {
+         "t": "int",
+         "v": "3"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored merge key standing as a flow sequence pair merging",
+    "text": "[&m <<: {b: 2}]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge key standing as a flow sequence pair merging",
+    "text": "[<<: {b: 2}]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge tagged key standing as a flow sequence pair merging",
+    "text": "[!!merge <<: {b: 2}]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored merge key standing as a flow sequence pair beside a plain pair",
+    "text": "[a: 1, &m <<: {b: 2}]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "a"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          }
+         ]
+        ]
+       },
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored merge key standing as a flow sequence pair nested in a flow mapping",
+    "text": "{x: [&m <<: {b: 2}]}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "x"
+        },
+        {
+         "t": "list",
+         "v": [
+          {
+           "t": "obj",
+           "v": [
+            [
+             {
+              "t": "str",
+              "v": "b"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored merge key standing as a block sequence pair merging",
+    "text": "- &m <<: {b: 2}",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "merge key standing as a block sequence pair merging",
+    "text": "- <<: {b: 2}",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "alias key standing as a flow sequence pair refusing",
+    "text": "&m <<: {b: 2}\n[*m: {c: 3}]",
+    "expect": {
+     "err": "ScannerError"
+    }
+   },
+   {
+    "name": "anchored merge key standing as a flow sequence pair beside a scalar entry merging",
+    "text": "[&m <<: {b: 2}, z]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "b"
+          },
+          {
+           "t": "int",
+           "v": "2"
+          }
+         ]
+        ]
+       },
+       {
+        "t": "str",
+        "v": "z"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "anchored quoted merge spelling standing as a flow sequence pair",
+    "text": "[&m \"<<\" : {b: 2}]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "obj",
+        "v": [
+         [
+          {
+           "t": "str",
+           "v": "<<"
+          },
+          {
+           "t": "obj",
+           "v": [
+            [
+             {
+              "t": "str",
+              "v": "b"
+             },
+             {
+              "t": "int",
+              "v": "2"
+             }
+            ]
+           ]
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    }
    }
   ],
   "yaml_strings": [
