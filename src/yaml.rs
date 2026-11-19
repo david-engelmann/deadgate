@@ -894,6 +894,61 @@ pub fn resolve_plain_scalar(text: &str) -> Option<YamlValue> {
 // The document reader
 // ----------------------------------------------------------------
 
+/// The kind of a break standing behind a line, the line feed
+/// kind and the two separator kinds of PORT15-1. A break of a
+/// separator kind renders as the character itself wherever a
+/// reading renders the break standing behind a line, where a
+/// break of the line feed kind renders as the one line feed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BreakKind {
+    LineFeed,
+    LineSeparator,
+    ParagraphSeparator,
+}
+
+impl BreakKind {
+    /// The character the break renders as, the separator
+    /// itself for a separator kind and the line feed for the
+    /// line feed kind.
+    fn as_char(self) -> char {
+        match self {
+            BreakKind::LineFeed => '\n',
+            BreakKind::LineSeparator => '\u{2028}',
+            BreakKind::ParagraphSeparator => '\u{2029}',
+        }
+    }
+
+    /// Whether the break is one of the two separators.
+    fn is_separator(self) -> bool {
+        !matches!(self, BreakKind::LineFeed)
+    }
+}
+
+/// Fold a run of breaks under the rule PORT15-2 states. A run
+/// of one break folds to one space where the break is of the
+/// line feed kind and to the separator itself where it is a
+/// separator. A run of two or more drops its first break where
+/// the first is of the line feed kind and keeps every break
+/// where the first is a separator, and every break after the
+/// first stands as a line feed where it is of the line feed
+/// kind and as itself where it is a separator.
+fn fold_break_run(run: &[BreakKind]) -> String {
+    if run.len() == 1 {
+        return match run[0] {
+            BreakKind::LineFeed => " ".to_string(),
+            kind => kind.as_char().to_string(),
+        };
+    }
+    let mut out = String::new();
+    for (index, kind) in run.iter().enumerate() {
+        if index == 0 && !kind.is_separator() {
+            continue;
+        }
+        out.push(kind.as_char());
+    }
+    out
+}
+
 #[derive(Debug, Clone)]
 struct Line {
     indent: usize,
@@ -904,6 +959,10 @@ struct Line {
     /// Whether a line break stands behind this line in the
     /// source, the last line of the text carrying none.
     has_break: bool,
+    /// The kind of the break standing behind this line, read
+    /// only where a break stands, the kind of a line carrying
+    /// no break never read.
+    kind: BreakKind,
 }
 
 struct Cursor {
@@ -2188,7 +2247,7 @@ fn block_content_spans(text: &str) -> Vec<(usize, usize)> {
     let chars: Vec<char> = text.chars().collect();
     let mut starts: Vec<usize> = vec![0];
     for (index, ch) in chars.iter().enumerate() {
-        if *ch == '\n' {
+        if *ch == '\n' || *ch == '\u{2028}' || *ch == '\u{2029}' {
             starts.push(index + 1);
         }
     }
@@ -2446,19 +2505,27 @@ fn tab_refused(text: &str) -> bool {
                     }
                 }
                 '\n' => {}
-                '#' if matches!(previous, None | Some(' ' | '\n' | ',' | '[' | '{')) => {
+                '#' if matches!(
+                    previous,
+                    None | Some(' ' | '\n' | '\u{2028}' | '\u{2029}' | ',' | '[' | '{')
+                ) =>
+                {
                     state = State::Comment;
                 }
                 '\'' if matches!(
                     previous,
-                    None | Some(' ' | '\n' | ':' | ',' | '[' | '{' | '-' | '?')
+                    None | Some(
+                        ' ' | '\n' | '\u{2028}' | '\u{2029}' | ':' | ',' | '[' | '{' | '-' | '?'
+                    )
                 ) =>
                 {
                     state = State::Single;
                 }
                 '"' if matches!(
                     previous,
-                    None | Some(' ' | '\n' | ':' | ',' | '[' | '{' | '-' | '?')
+                    None | Some(
+                        ' ' | '\n' | '\u{2028}' | '\u{2029}' | ':' | ',' | '[' | '{' | '-' | '?'
+                    )
                 ) =>
                 {
                     state = State::Double;
@@ -2466,7 +2533,7 @@ fn tab_refused(text: &str) -> bool {
                 _ => {}
             },
             State::Comment => {
-                if ch == '\n' {
+                if ch == '\n' || ch == '\u{2028}' || ch == '\u{2029}' {
                     state = State::Normal;
                 }
             }
@@ -2646,19 +2713,23 @@ fn inline_opens_block_node(rest: &str) -> bool {
 
 fn parse_yaml_document(text: &str) -> Option<YamlValue> {
     // The runtime reading takes the carriage return forms and
-    // the next line and line separator and paragraph separator
-    // characters all as line breaks, so the text is normalized
-    // to the one break before it is split into lines. The tab
-    // standing is taken over the normalized text, so the block
-    // content spans the tab pass exempts are found under every
-    // break form, the carriage return forms among them, while
-    // the printable screen below runs over the text as given.
+    // the next line character all as line breaks, and those
+    // forms fold to the one line feed before the text is split
+    // into lines. The line separator and the paragraph
+    // separator stand in the text as themselves, as PORT15-1
+    // states, and the split below cuts at every break standing
+    // in the text, at a line feed and at either separator, and
+    // records on each line the kind of the break that stood
+    // behind it, the last line carrying no break. The tab
+    // standing is taken over the text as it stands after that
+    // folding, so the block content spans the tab pass exempts
+    // are found under every break form, the carriage return
+    // forms among them, while the printable screen below runs
+    // over the text as given.
     let normalized = text
         .replace("\r\n", "\n")
         .replace('\r', "\n")
-        .replace('\u{85}', "\n")
-        .replace('\u{2028}', "\n")
-        .replace('\u{2029}', "\n");
+        .replace('\u{85}', "\n");
     if tab_refused(&normalized) {
         return None;
     }
@@ -2677,9 +2748,23 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
         }
     }
     let mut lines: Vec<Line> = Vec::new();
-    let segments: Vec<&str> = normalized.split('\n').collect();
-    let last_segment = segments.len() - 1;
-    for (index, raw) in segments.iter().enumerate() {
+    let mut segments: Vec<(&str, Option<BreakKind>)> = Vec::new();
+    let mut segment_start = 0usize;
+    for (index, ch) in normalized.char_indices() {
+        let kind = match ch {
+            '\n' => Some(BreakKind::LineFeed),
+            '\u{2028}' => Some(BreakKind::LineSeparator),
+            '\u{2029}' => Some(BreakKind::ParagraphSeparator),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            segments.push((&normalized[segment_start..index], Some(kind)));
+            segment_start = index + ch.len_utf8();
+        }
+    }
+    segments.push((&normalized[segment_start..], None));
+    for (raw, kind) in &segments {
+        let raw = *raw;
         let mut indent = 0usize;
         let mut content_start = raw.len();
         for (position, ch) in raw.char_indices() {
@@ -2696,7 +2781,8 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
             indent,
             text: content.to_string(),
             raw: raw.to_string(),
-            has_break: index < last_segment,
+            has_break: kind.is_some(),
+            kind: kind.unwrap_or(BreakKind::LineFeed),
         });
     }
     let mut cursor = Cursor { lines, pos: 0 };
@@ -2744,6 +2830,7 @@ fn parse_yaml_document(text: &str) -> Option<YamlValue> {
                 text: rest.to_string(),
                 raw: rest.to_string(),
                 has_break: standing.has_break,
+                kind: standing.kind,
             };
         }
         break;
@@ -3036,6 +3123,7 @@ fn read_collection_key(
         text: text.to_string(),
         raw: text.to_string(),
         has_break: original.has_break,
+        kind: original.kind,
     };
     cursor.pos = key_line_index;
     let built = parse_block(cursor, indent, depth, state);
@@ -3147,6 +3235,18 @@ fn read_explicit_key_text(
         if collection_tag.is_some() {
             return None;
         }
+        // A separator ending the line the key stands on
+        // gathers the key's continuation standing on the
+        // following lines, the chunks folding by the run
+        // rule as a block plain scalar folds, the gathering
+        // stopping at the pair's colon line. A key whose
+        // line ends at a line feed keeps the standing
+        // reading whole.
+        let gathered = gather_explicit_plain_key(cursor, indent, plain_text);
+        let plain_text: &str = match &gathered {
+            Some(text) => text.as_str(),
+            None => plain_text,
+        };
         match &key_props.tag {
             KeyTag::Convert(tag) => convert_tagged_scalar(tag, plain_text)?,
             _ => parse_key_scalar(plain_text)?,
@@ -3162,6 +3262,64 @@ fn read_explicit_key_text(
     }
     let key = YamlKey::of(&value)?;
     Some((key, plain_merge))
+}
+
+/// Gather the continuation of an explicit plain key whose
+/// first line ends at a separator, folding the chunks by
+/// the run rule over the breaks standing between them.
+/// The gathering walks the lines behind the key's own line
+/// while they stand deeper than the mapping and are not
+/// the pair's colon line, blank lines between chunks
+/// standing in the run as they stand in a block plain
+/// scalar, and a comment line ends the gathering as it
+/// ends a plain scalar. Hands back nothing when the key
+/// stands on one line, and advances the cursor past the
+/// gathered lines when it hands a folded key back.
+fn gather_explicit_plain_key(
+    cursor: &mut Cursor,
+    indent: usize,
+    first_text: &str,
+) -> Option<String> {
+    let key_line = cursor.pos.checked_sub(1)?;
+    if !cursor.lines[key_line].kind.is_separator() {
+        return None;
+    }
+    let mut chunks: Vec<String> = vec![first_text.to_string()];
+    let mut runs: Vec<Vec<BreakKind>> = Vec::new();
+    let mut prev = key_line;
+    let mut scan = cursor.pos;
+    loop {
+        let mut run = vec![cursor.lines[prev].kind];
+        let mut probe = scan;
+        while probe < cursor.lines.len() && cursor.lines[probe].text.trim().is_empty() {
+            run.push(cursor.lines[probe].kind);
+            probe += 1;
+        }
+        if probe >= cursor.lines.len() {
+            break;
+        }
+        let next = &cursor.lines[probe];
+        if next.text.trim_start().starts_with('#')
+            || next.indent <= indent
+            || colon_opening(&next.text)
+        {
+            break;
+        }
+        chunks.push(cut_comment(&next.text).trim().to_string());
+        runs.push(run);
+        prev = probe;
+        scan = probe + 1;
+    }
+    if chunks.len() == 1 {
+        return None;
+    }
+    let mut folded = chunks[0].clone();
+    for (index, run) in runs.iter().enumerate() {
+        folded.push_str(&fold_break_run(run));
+        folded.push_str(&chunks[index + 1]);
+    }
+    cursor.pos = prev + 1;
+    Some(folded)
 }
 
 fn parse_mapping(
@@ -3522,11 +3680,13 @@ fn parse_sequence(
         let virtual_indent = indent + 1 + lead;
         if is_dash_text(&content) || mapping_shape(&content, &state.bindings) {
             let standing_break = line.has_break;
+            let standing_kind = line.kind;
             cursor.lines[li] = Line {
                 indent: virtual_indent,
                 text: content.clone(),
                 raw: content,
                 has_break: standing_break,
+                kind: standing_kind,
             };
             cursor.pos = li;
             let value = parse_block(cursor, indent, depth + 1, state)?;
@@ -3712,8 +3872,9 @@ enum SpanUnit {
     Char(char),
     /// A character an escape spells, standing as content.
     Escaped(char),
-    /// A raw break standing in the span.
-    Break,
+    /// A raw break standing in the span, carrying the kind
+    /// of the break as it stands.
+    Break(BreakKind),
     /// A raw space or tab standing in the span, food for the
     /// trimming that stands beside a break.
     Blank(char),
@@ -3741,7 +3902,10 @@ fn marker_at_head(text: &str, pos: usize) -> bool {
     if !rest.starts_with("---") && !rest.starts_with("...") {
         return false;
     }
-    matches!(rest[3..].chars().next(), None | Some(' ' | '\t' | '\n'))
+    matches!(
+        rest[3..].chars().next(),
+        None | Some(' ' | '\t' | '\n' | '\u{2028}' | '\u{2029}')
+    )
 }
 
 /// Scan the quoted span opening at the head of the text, the
@@ -3751,10 +3915,11 @@ fn marker_at_head(text: &str, pos: usize) -> bool {
 /// line with it, and a line a span crosses that opens with a
 /// document marker refuses the span, the marker standing on
 /// the opening line or indented on a crossed line standing as
-/// content. The text the reading hands over carries every
-/// break form as the one line feed, the normalization at the
-/// door having taken them, so the folding states its algebra
-/// over the line feed alone.
+/// content. The text the reading hands over carries the
+/// carriage return forms and the next line character folded
+/// to the one line feed from the door, and every other break
+/// standing as itself, so the folding states its algebra
+/// over the kinds of the breaks.
 fn read_quoted_span(text: &str, double: bool) -> SpanRead {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut units: Vec<SpanUnit> = Vec::new();
@@ -3777,13 +3942,13 @@ fn read_quoted_span(text: &str, double: bool) -> SpanRead {
                 let Some(&(escape_byte, escape)) = chars.get(index + 1) else {
                     return SpanRead::Unterminated;
                 };
-                if escape == '\n' {
+                if matches!(escape, '\n' | '\u{2028}' | '\u{2029}') {
                     // A broken line inside a double quoted
                     // scalar joins with nothing standing, and
                     // the marker standing at the head of the
                     // line it crosses refuses as it refuses
                     // across a folded break.
-                    if marker_at_head(text, escape_byte + 1) {
+                    if marker_at_head(text, escape_byte + escape.len_utf8()) {
                         return SpanRead::Refused;
                     }
                     index += 2;
@@ -3836,11 +4001,15 @@ fn read_quoted_span(text: &str, double: bool) -> SpanRead {
                 };
                 units.push(SpanUnit::Escaped(decoded));
             }
-            '\n' => {
-                if marker_at_head(text, byte + 1) {
+            '\n' | '\u{2028}' | '\u{2029}' => {
+                if marker_at_head(text, byte + ch.len_utf8()) {
                     return SpanRead::Refused;
                 }
-                units.push(SpanUnit::Break);
+                units.push(SpanUnit::Break(match ch {
+                    '\n' => BreakKind::LineFeed,
+                    '\u{2028}' => BreakKind::LineSeparator,
+                    _ => BreakKind::ParagraphSeparator,
+                }));
                 index += 1;
             }
             ' ' | '\t' => {
@@ -3862,21 +4031,22 @@ fn read_quoted_span(text: &str, double: bool) -> SpanRead {
 /// Fold the units of one quoted span. The units gather into
 /// text pieces and break runs, a blank beside a break
 /// standing inside the run and a blank at the edge of a text
-/// piece trimming where a run stands beside it, and a run of
-/// one break folds to one space and a run of two or more
-/// breaks folds to one break fewer than it carries, at the
+/// piece trimming where a run stands beside it, and every
+/// run folds by the run rule, one break of line feed kind
+/// to one space and one separator standing as itself and a
+/// longer run standing as the rule hands it back, at the
 /// edges of the span as between its letters.
 fn fold_span_units(units: &[SpanUnit]) -> String {
     enum Piece {
         Text(Vec<SpanUnit>),
-        Breaks(usize),
+        Breaks(Vec<BreakKind>),
     }
     let mut pieces: Vec<Piece> = Vec::new();
     for unit in units {
         match unit {
-            SpanUnit::Break => match pieces.last_mut() {
-                Some(Piece::Breaks(count)) => *count += 1,
-                _ => pieces.push(Piece::Breaks(1)),
+            SpanUnit::Break(kind) => match pieces.last_mut() {
+                Some(Piece::Breaks(kinds)) => kinds.push(*kind),
+                _ => pieces.push(Piece::Breaks(vec![*kind])),
             },
             SpanUnit::Blank(_) => match pieces.last_mut() {
                 Some(Piece::Breaks(_)) => {}
@@ -3892,12 +4062,8 @@ fn fold_span_units(units: &[SpanUnit]) -> String {
     let mut out = String::new();
     for (position, piece) in pieces.iter().enumerate() {
         match piece {
-            Piece::Breaks(count) => {
-                if *count == 1 {
-                    out.push(' ');
-                } else {
-                    out.push_str(&"\n".repeat(count - 1));
-                }
+            Piece::Breaks(kinds) => {
+                out.push_str(&fold_break_run(kinds));
             }
             Piece::Text(text) => {
                 let mut slice: &[SpanUnit] = text;
@@ -3916,7 +4082,7 @@ fn fold_span_units(units: &[SpanUnit]) -> String {
                         SpanUnit::Char(ch) | SpanUnit::Escaped(ch) | SpanUnit::Blank(ch) => {
                             out.push(*ch)
                         }
-                        SpanUnit::Break => unreachable!(),
+                        SpanUnit::Break(_) => unreachable!(),
                     }
                 }
             }
@@ -3930,7 +4096,9 @@ fn fold_span_units(units: &[SpanUnit]) -> String {
 /// it, handing back the folded text and the rest of the line
 /// the closing quote stands on. The lines the span crosses
 /// stand gathered as the flow reading gathers them, each
-/// line's indent standing in front of its text.
+/// line's indent standing in front of its text and the break
+/// that ended the line before it standing between them as
+/// the character of its kind.
 fn read_block_quoted(text: &str, cursor: &mut Cursor, double: bool) -> Option<(String, String)> {
     match read_quoted_span(text, double) {
         SpanRead::Closed(value, end) => {
@@ -3940,15 +4108,21 @@ fn read_block_quoted(text: &str, cursor: &mut Cursor, double: bool) -> Option<(S
         SpanRead::Unterminated => {}
     }
     let mut combined = text.to_string();
+    let mut pending_kind = if cursor.pos > 0 {
+        cursor.lines[cursor.pos - 1].kind
+    } else {
+        BreakKind::LineFeed
+    };
     loop {
         if cursor.pos >= cursor.lines.len() {
             return None;
         }
         let line = cursor.lines[cursor.pos].clone();
         cursor.pos += 1;
-        combined.push('\n');
+        combined.push(pending_kind.as_char());
         combined.push_str(&" ".repeat(line.indent));
         combined.push_str(&line.text);
+        pending_kind = line.kind;
         match read_quoted_span(&combined, double) {
             SpanRead::Closed(value, end) => {
                 return Some((value, combined[end..].to_string()));
@@ -4117,15 +4291,21 @@ fn parse_inline_node(
     match first {
         '[' | '{' => {
             let mut combined = text.to_string();
+            let mut pending_kind = if cursor.pos > 0 {
+                cursor.lines[cursor.pos - 1].kind
+            } else {
+                BreakKind::LineFeed
+            };
             while !flow_closed(&combined) {
                 if cursor.pos >= cursor.lines.len() {
                     return None;
                 }
                 let line = cursor.lines[cursor.pos].clone();
                 cursor.pos += 1;
-                combined.push('\n');
+                combined.push(pending_kind.as_char());
                 combined.push_str(&" ".repeat(line.indent));
                 combined.push_str(&line.text);
+                pending_kind = line.kind;
             }
             let mut parser = FlowParser::new(&combined, state);
             let value = parser.parse_value(depth)?;
@@ -4186,9 +4366,10 @@ fn parse_inline_node(
                 return None;
             }
             let mut chunks: Vec<String> = vec![first_cut.trim().to_string()];
-            let mut gaps: Vec<usize> = Vec::new();
+            let mut runs: Vec<Vec<BreakKind>> = Vec::new();
+            let mut pending: Vec<BreakKind> = Vec::new();
+            let mut prev_line = cursor.pos.saturating_sub(1);
             let mut scan = cursor.pos;
-            let mut pending_blanks = 0usize;
             let mut comment_seen = false;
             loop {
                 let Some(line) = cursor.lines.get(scan) else {
@@ -4197,7 +4378,7 @@ fn parse_inline_node(
                 let line = line.clone();
                 let trimmed = line.text.trim();
                 if trimmed.is_empty() {
-                    pending_blanks += 1;
+                    pending.push(line.kind);
                     scan += 1;
                     continue;
                 }
@@ -4222,19 +4403,18 @@ fn parse_inline_node(
                 if segment.contains('\t') {
                     return None;
                 }
-                gaps.push(pending_blanks);
+                let mut run = vec![cursor.lines[prev_line].kind];
+                run.extend(pending.iter().copied());
+                runs.push(run);
+                pending.clear();
                 chunks.push(segment.trim().to_string());
-                pending_blanks = 0;
+                prev_line = scan;
                 scan += 1;
                 cursor.pos = scan;
             }
             let mut folded = chunks[0].clone();
-            for (gap, chunk) in gaps.iter().zip(chunks.iter().skip(1)) {
-                if *gap == 0 {
-                    folded.push(' ');
-                } else {
-                    folded.push_str(&"\n".repeat(*gap));
-                }
+            for (run, chunk) in runs.iter().zip(chunks.iter().skip(1)) {
+                folded.push_str(&fold_break_run(run));
                 folded.push_str(chunk);
             }
             if tag.is_constructor() {
@@ -4340,7 +4520,7 @@ fn parse_block_scalar(
     let explicit = digit.map(|digit| parent_indent + digit);
     // Gather the lines of the block, walking the line vector
     // directly, no line skipped as blank or as a comment.
-    let mut raw_lines: Vec<(String, bool)> = Vec::new();
+    let mut raw_lines: Vec<(String, bool, BreakKind)> = Vec::new();
     let mut scan = cursor.pos;
     let mut block_indent: Option<usize> = explicit;
     let mut floor = 0usize;
@@ -4354,7 +4534,7 @@ fn parse_block_scalar(
                 if line.indent > floor {
                     floor = line.indent;
                 }
-                raw_lines.push((line.raw.clone(), line.has_break));
+                raw_lines.push((line.raw.clone(), line.has_break, line.kind));
                 scan += 1;
                 continue;
             }
@@ -4370,13 +4550,13 @@ fn parse_block_scalar(
             block_indent = Some(line.indent);
             decided = true;
             first_content = Some(raw_lines.len());
-            raw_lines.push((line.raw.clone(), line.has_break));
+            raw_lines.push((line.raw.clone(), line.has_break, line.kind));
             scan += 1;
             continue;
         }
         let width = block_indent.expect("decided width");
         if is_blank {
-            raw_lines.push((line.raw.clone(), line.has_break));
+            raw_lines.push((line.raw.clone(), line.has_break, line.kind));
             scan += 1;
             continue;
         }
@@ -4392,7 +4572,7 @@ fn parse_block_scalar(
         if first_content.is_none() {
             first_content = Some(raw_lines.len());
         }
-        raw_lines.push((line.raw.clone(), line.has_break));
+        raw_lines.push((line.raw.clone(), line.has_break, line.kind));
         scan += 1;
     }
     let width = block_indent.unwrap_or(parent_indent + 1);
@@ -4411,9 +4591,10 @@ fn parse_block_scalar(
         blank: bool,
         more: bool,
         has_break: bool,
+        kind: BreakKind,
     }
     let mut pieces: Vec<Piece> = Vec::new();
-    for (raw, has_break) in &raw_lines {
+    for (raw, has_break, kind) in &raw_lines {
         let spaces = raw.chars().take_while(|ch| *ch == ' ').count();
         let all_spaces = raw.chars().all(|ch| ch == ' ');
         if undecided || (all_spaces && spaces <= width) {
@@ -4422,6 +4603,7 @@ fn parse_block_scalar(
                 blank: true,
                 more: false,
                 has_break: *has_break,
+                kind: *kind,
             });
         } else {
             let content: String = raw.chars().skip(width).collect();
@@ -4431,108 +4613,96 @@ fn parse_block_scalar(
                 blank: false,
                 more,
                 has_break: *has_break,
+                kind: *kind,
             });
         }
     }
-    // Assemble the value before its final break, counting the
-    // breaks that stand at its end for the chomping.
+    // Assemble the value before its final breaks, gathering
+    // the breaks that stand at its end for the chomping.
+    // Every piece carries the kind of the break that ended
+    // its line, and the assembly states its joins over the
+    // runs of kinds standing between content pieces, a
+    // literal join standing as every break of its run and a
+    // folded join standing as the run rule hands it back
+    // beside the more indented standings.
     let first = pieces.iter().position(|piece| !piece.blank);
     let last = pieces.iter().rposition(|piece| !piece.blank);
     let (body, trailing) = match (first, last) {
         (Some(first), Some(last)) => {
             // Blank lines standing before the content count
             // one break each in the value, under every
-            // chomping, once content follows.
-            let mut body = "\n".repeat(first);
-            for index in first..=last {
-                if index > first {
-                    let previous = &pieces[index - 1];
-                    let current = &pieces[index];
-                    if !folded {
-                        body.push('\n');
-                    } else if previous.blank || current.blank {
-                        let blanks = {
-                            let mut count = 0;
-                            let mut walk = index - 1;
-                            loop {
-                                if pieces[walk].blank {
-                                    count += 1;
-                                    if walk == first {
-                                        break;
-                                    }
-                                    walk -= 1;
-                                } else {
-                                    break;
-                                }
-                            }
-                            count
-                        };
-                        if current.blank {
-                            // Breaks inside a blank run are
-                            // counted at the run's last blank.
-                        } else if blanks > 0 {
-                            // A blank run between two content
-                            // lines gives one break per blank
-                            // line, and where the line before
-                            // the run or the line after it is
-                            // more indented the break of the
-                            // line before the run stands as
-                            // well, since a break beside a
-                            // more indented line is never
-                            // folded away.
-                            let before = &pieces[index - 1 - blanks];
-                            let kept = if before.more || current.more { 1 } else { 0 };
-                            body.push_str(&"\n".repeat(blanks + kept));
-                        } else {
-                            body.push('\n');
-                        }
-                        if current.blank && index == last {
-                            body.push('\n');
-                        }
-                    } else if previous.more || current.more {
+            // chomping, once content follows, each standing
+            // as the character of its own kind.
+            let mut body = String::new();
+            for piece in &pieces[..first] {
+                body.push(piece.kind.as_char());
+            }
+            body.push_str(&pieces[first].content);
+            let mut index = first + 1;
+            while index <= last {
+                if pieces[index].blank {
+                    index += 1;
+                    continue;
+                }
+                let mut back = index - 1;
+                while pieces[back].blank {
+                    back -= 1;
+                }
+                let run: Vec<BreakKind> = (back..index).map(|at| pieces[at].kind).collect();
+                if !folded {
+                    for kind in &run {
+                        body.push(kind.as_char());
+                    }
+                } else if run.len() == 1 {
+                    if run[0].is_separator() {
+                        body.push(run[0].as_char());
+                    } else if pieces[back].more || pieces[index].more {
                         body.push('\n');
                     } else {
                         body.push(' ');
                     }
+                } else if run[0].is_separator() || pieces[back].more || pieces[index].more {
+                    for kind in &run {
+                        body.push(kind.as_char());
+                    }
+                } else {
+                    for kind in &run[1..] {
+                        body.push(kind.as_char());
+                    }
                 }
                 body.push_str(&pieces[index].content);
+                index += 1;
             }
-            let last_piece = &pieces[last];
-            let mut trailing = if last_piece.has_break { 1usize } else { 0usize };
-            for piece in &pieces[last + 1..] {
-                if piece.has_break {
-                    trailing += 1;
-                }
-            }
+            let trailing: Vec<BreakKind> = (last..pieces.len())
+                .filter(|at| pieces[*at].has_break)
+                .map(|at| pieces[at].kind)
+                .collect();
             (body, trailing)
         }
         _ => {
-            let mut breaks = 0usize;
-            for piece in &pieces {
-                if piece.has_break {
-                    breaks += 1;
-                }
-            }
-            (String::new(), breaks)
+            let trailing: Vec<BreakKind> = pieces
+                .iter()
+                .filter(|piece| piece.has_break)
+                .map(|piece| piece.kind)
+                .collect();
+            (String::new(), trailing)
         }
     };
     let value = match chomping {
         Chomping::Strip => body,
         Chomping::Clip => {
-            if body.is_empty() {
+            if body.is_empty() || trailing.is_empty() {
                 body
-            } else if trailing > 0 {
-                format!("{body}\n")
             } else {
-                body
+                format!("{body}{}", trailing[0].as_char())
             }
         }
         Chomping::Keep => {
-            if body.is_empty() {
-                "\n".repeat(trailing)
-            } else {
-                format!("{body}{}", "\n".repeat(trailing))
+            let mut kept = body;
+            for kind in &trailing {
+                kept.push(kind.as_char());
             }
+            kept
         }
     };
     Some(YamlValue::Text(value))
@@ -4558,7 +4728,10 @@ fn parse_block_scalar(
 /// before the hash is a character of the entry's plain
 /// scalar, and a blank or a flow bracket or a comma or a
 /// dividing colon or the close of a quoted span or of a
-/// nested collection breaks the standing.
+/// nested collection breaks the standing. A separator
+/// stands at the end of a line in this reading as a line
+/// feed stands, the gathering having handed the lines over
+/// with the breaks of their kinds standing between them.
 fn flow_closed(text: &str) -> bool {
     let chars: Vec<char> = text.chars().collect();
     let mut depth = 0i64;
@@ -4624,7 +4797,20 @@ fn flow_closed(text: &str) -> bool {
                 ':' => {
                     let next = chars.get(index + 1);
                     scalar_begun = !(next.is_none()
-                        || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{')));
+                        || matches!(
+                            next,
+                            Some(
+                                ' ' | '\t'
+                                    | '\n'
+                                    | '\u{2028}'
+                                    | '\u{2029}'
+                                    | ','
+                                    | ']'
+                                    | '}'
+                                    | '['
+                                    | '{'
+                            )
+                        ));
                     // The colon carries the standing only
                     // where plain content stood directly
                     // before it and the colon does not
@@ -4646,7 +4832,9 @@ fn flow_closed(text: &str) -> bool {
                 '#' => {
                     if !plain_attached {
                         // A comment runs to the end of its line.
-                        while index + 1 < chars.len() && chars[index + 1] != '\n' {
+                        while index + 1 < chars.len()
+                            && !matches!(chars[index + 1], '\n' | '\u{2028}' | '\u{2029}')
+                        {
                             index += 1;
                         }
                     }
@@ -4662,13 +4850,21 @@ fn flow_closed(text: &str) -> bool {
                     while index + 1 < chars.len()
                         && !matches!(
                             chars[index + 1],
-                            ' ' | '\t' | '\n' | ',' | '[' | ']' | '{' | '}'
+                            ' ' | '\t'
+                                | '\n'
+                                | '\u{2028}'
+                                | '\u{2029}'
+                                | ','
+                                | '['
+                                | ']'
+                                | '{'
+                                | '}'
                         )
                     {
                         index += 1;
                     }
                 }
-                ' ' | '\t' | '\n' => {
+                ' ' | '\t' | '\n' | '\u{2028}' | '\u{2029}' => {
                     plain_attached = false;
                 }
                 _ => {
@@ -4714,13 +4910,14 @@ impl<'a> FlowParser<'a> {
     fn skip_separators(&mut self) {
         loop {
             match self.chars.get(self.pos) {
-                Some(' ') | Some('\t') | Some('\n') | Some('\r') => {
+                Some(' ') | Some('\t') | Some('\n') | Some('\r') | Some('\u{2028}')
+                | Some('\u{2029}') => {
                     self.pos += 1;
                 }
                 Some('#') => {
                     while let Some(ch) = self.chars.get(self.pos) {
                         self.pos += 1;
-                        if *ch == '\n' {
+                        if matches!(*ch, '\n' | '\u{2028}' | '\u{2029}') {
                             break;
                         }
                     }
@@ -5085,7 +5282,12 @@ impl<'a> FlowParser<'a> {
                             '"' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_double_quoted(&text)?;
-                                if !explicit_pair && text.chars().take(end).any(|ch| ch == '\n') {
+                                if !explicit_pair
+                                    && text
+                                        .chars()
+                                        .take(end)
+                                        .any(|ch| matches!(ch, '\n' | '\u{2028}' | '\u{2029}'))
+                                {
                                     // A quoted scalar spanning
                                     // lines standing as a compact
                                     // flow key refuses, as the
@@ -5103,7 +5305,12 @@ impl<'a> FlowParser<'a> {
                             '\'' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_single_quoted(&text)?;
-                                if !explicit_pair && text.chars().take(end).any(|ch| ch == '\n') {
+                                if !explicit_pair
+                                    && text
+                                        .chars()
+                                        .take(end)
+                                        .any(|ch| matches!(ch, '\n' | '\u{2028}' | '\u{2029}'))
+                                {
                                     return None;
                                 }
                                 self.pos += end;
@@ -5124,6 +5331,18 @@ impl<'a> FlowParser<'a> {
                             ',' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => return None,
                             _ => {
                                 let folded = self.scan_plain_token()?;
+                                if !explicit_pair
+                                    && (folded.contains('\u{2028}') || folded.contains('\u{2029}'))
+                                {
+                                    // A plain key carrying a
+                                    // separator refuses in flow
+                                    // position, under PORT15-5,
+                                    // the explicit key form
+                                    // standing outside the
+                                    // refusal as the runtime
+                                    // reads it.
+                                    return None;
+                                }
                                 match &key_tag {
                                     KeyTag::Convert(tag) => {
                                         (convert_tagged_scalar(tag, &folded)?, None)
@@ -5248,14 +5467,32 @@ impl<'a> FlowParser<'a> {
                 Some(':') => {
                     let next = self.chars.get(index + 1);
                     if next.is_none()
-                        || matches!(next, Some(' ' | '\t' | '\n' | ',' | ']' | '}' | '[' | '{'))
+                        || matches!(
+                            next,
+                            Some(
+                                ' ' | '\t'
+                                    | '\n'
+                                    | '\u{2028}'
+                                    | '\u{2029}'
+                                    | ','
+                                    | ']'
+                                    | '}'
+                                    | '['
+                                    | '{'
+                            )
+                        )
                     {
                         break;
                     }
                     index += 1;
                 }
                 Some('#') => {
-                    if index > start && matches!(self.chars[index - 1], ' ' | '\t' | '\n') {
+                    if index > start
+                        && matches!(
+                            self.chars[index - 1],
+                            ' ' | '\t' | '\n' | '\u{2028}' | '\u{2029}'
+                        )
+                    {
                         break;
                     }
                     index += 1;
@@ -5310,32 +5547,67 @@ impl<'a> FlowParser<'a> {
     }
 }
 
-/// Fold the line breaks inside a flow plain scalar, a single
-/// break standing as a space and each further break standing
-/// as one more line break.
+/// Fold the breaks inside a flow plain scalar, the chunks
+/// between breaks trimming at their edges and every run of
+/// breaks folding by the run rule, one break of line feed
+/// kind to one space and one separator standing as itself
+/// and a longer run standing as the rule hands it back,
+/// blanks standing beside a break standing inside its run.
 fn fold_flow_plain(raw: &str) -> String {
-    let mut out = String::new();
-    let chunks = raw.split('\n');
-    let mut first = true;
-    let mut pending_newlines = 0usize;
-    for chunk in chunks {
-        let trimmed = chunk.trim();
-        if trimmed.is_empty() {
-            pending_newlines += 1;
-            continue;
-        }
-        if !first {
-            if pending_newlines <= 1 {
-                out.push(' ');
-            } else {
-                out.push_str(&"\n".repeat(pending_newlines - 1));
+    enum Segment {
+        Text(String),
+        Run(Vec<BreakKind>),
+    }
+    let mut segments: Vec<Segment> = Vec::new();
+    let mut text = String::new();
+    let mut run: Vec<BreakKind> = Vec::new();
+    for ch in raw.chars() {
+        match ch {
+            '\n' | '\u{2028}' | '\u{2029}' => {
+                if !text.is_empty() {
+                    segments.push(Segment::Text(std::mem::take(&mut text)));
+                }
+                run.push(match ch {
+                    '\n' => BreakKind::LineFeed,
+                    '\u{2028}' => BreakKind::LineSeparator,
+                    _ => BreakKind::ParagraphSeparator,
+                });
+            }
+            _ => {
+                if !run.is_empty() {
+                    segments.push(Segment::Run(std::mem::take(&mut run)));
+                }
+                text.push(ch);
             }
         }
-        out.push_str(trimmed);
-        first = false;
-        pending_newlines = 1;
     }
-    out
+    if !text.is_empty() {
+        segments.push(Segment::Text(text));
+    }
+    if !run.is_empty() {
+        segments.push(Segment::Run(run));
+    }
+    let mut folded = String::new();
+    let mut pending: Vec<BreakKind> = Vec::new();
+    let mut seen_text = false;
+    for segment in segments {
+        match segment {
+            Segment::Run(kinds) => pending.extend(kinds),
+            Segment::Text(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if seen_text {
+                    folded.push_str(&fold_break_run(&pending));
+                }
+                folded.push_str(trimmed);
+                seen_text = true;
+                pending.clear();
+            }
+        }
+    }
+    folded
 }
 
 fn parse_flow_single_quoted(text: &str) -> Option<(String, usize)> {
