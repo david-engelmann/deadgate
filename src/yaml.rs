@@ -2131,6 +2131,21 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
                 None
             }
         }
+        Tag::Merge => {
+            // The merge tag is a key's tag, and the one
+            // node it settles is the plain merge spelling
+            // itself, which the flow plain reading stands
+            // carrying its plain token for the consumers
+            // that can take it as a key to read. The
+            // settlement hands that node over as it stands,
+            // and every other node under the tag refuses
+            // here as it refuses today.
+            if built.plain_token.as_deref() == Some("<<") {
+                Some(built)
+            } else {
+                None
+            }
+        }
         _ if tag.is_constructor() => {
             if built.tag_done {
                 return Some(built);
@@ -3084,8 +3099,7 @@ fn read_explicit_key_text(
             return None;
         }
         check_trailing(&raw[1 + name.len()..])?;
-        let key = read_alias_key(state, &name)?;
-        return Some((key, false));
+        return Some(read_alias_key(state, &name)?);
     }
     let value = if first == '"' || first == '\'' {
         if collection_tag.is_some() {
@@ -3264,7 +3278,7 @@ fn parse_mapping(
                             }
                             check_trailing(&after_next[1 + name.len()..])?;
                             cursor.pos = nj + 1;
-                            (read_alias_key(state, &name)?, false)
+                            read_alias_key(state, &name)?
                         } else if next_offset > 0 {
                             // Properties standing on the key
                             // line send the key through the key
@@ -3352,8 +3366,8 @@ fn parse_mapping(
             if after_name.len() > 1 && !matches!(after_name.as_bytes()[1], b' ' | b'\t') {
                 return None;
             }
-            let key = read_alias_key(state, &name)?;
-            (key, false, after_name[1..].trim_start().to_string())
+            let (key, merge_key) = read_alias_key(state, &name)?;
+            (key, merge_key, after_name[1..].trim_start().to_string())
         } else if let Some((collection_end, rest_start)) = flow_key_split(after_props) {
             // A flow collection standing as a compact key, the
             // pair's colon standing behind its closing bracket.
@@ -3654,21 +3668,17 @@ fn bind_key_anchor(
 }
 
 /// Read an alias standing where a key stands, the resolved
-/// node standing as the key where it is a scalar. The merge
-/// spelling standing as the resolved text refuses where
-/// the anchored scalar stood as a merge key, by the plain
-/// spelling or under the merge tag, as the runtime dies on
-/// that anchored node in its constructor, and reads where
-/// the anchored scalar carried the spelling under the
-/// string tag, the anchor record carrying the standing
-/// that tells the spellings apart.
-fn read_alias_key(state: &mut ReadState, name: &str) -> Option<YamlKey> {
+/// node standing as the key where it is a scalar, and hand
+/// back the anchor record's merge standing beside the key,
+/// so the pair behind the key sorts as a merge where the
+/// anchored scalar stood as a merge key, by the plain
+/// spelling or under the merge tag, and as an ordinary pair
+/// in every other standing, the quoted and string tagged
+/// spellings of the merge text among them.
+fn read_alias_key(state: &mut ReadState, name: &str) -> Option<(YamlKey, bool)> {
     let merge_key = state.bound.get(name).is_some_and(|entry| entry.merge_key);
     let built = state.resolve_alias(name)?;
-    if merge_key && matches!(&built.value, YamlValue::Text(text) if text == "<<") {
-        return None;
-    }
-    YamlKey::of(&built.value)
+    Some((YamlKey::of(&built.value)?, merge_key))
 }
 
 fn parse_key_scalar(raw: &str) -> Option<YamlValue> {
@@ -4914,9 +4924,6 @@ impl<'a> FlowParser<'a> {
                             return None;
                         }
                         if item_plain.as_deref() == Some("<<") || item_tag == Tag::Merge {
-                            if item_anchor {
-                                return None;
-                            }
                             let mut merged: Vec<(YamlKey, YamlValue)> = Vec::new();
                             let mut tally = 0usize;
                             expand_merge_into(self.state, value, &mut merged, &mut tally)?;
@@ -4992,7 +4999,7 @@ impl<'a> FlowParser<'a> {
                             (None, KeyTag::None)
                         };
                     self.skip_separators();
-                    let mut alias_key: Option<YamlKey> = None;
+                    let mut alias_key: Option<(YamlKey, bool)> = None;
                     if self.peek() == Some('*') {
                         // An alias standing as the key, a
                         // property in front of an alias
@@ -5159,11 +5166,11 @@ impl<'a> FlowParser<'a> {
                     } else {
                         Built::scalar(YamlValue::Null)
                     };
-                    if merge_key {
+                    if merge_key || alias_key.as_ref().is_some_and(|(_, standing)| *standing) {
                         merge_sources.push(value);
                     } else {
                         let key = match &alias_key {
-                            Some(key) => key.clone(),
+                            Some((key, _)) => key.clone(),
                             None => YamlKey::of(&key_value)?,
                         };
                         explicit.push((key, value));

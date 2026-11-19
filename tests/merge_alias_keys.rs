@@ -138,7 +138,9 @@ fn test_a_direct_merge_key_with_the_merge_tag_in_front_of_it_still_merges() {
 }
 
 // The amendment to PORT13-2, the alias key standings at
-// an anchored merge key.
+// an anchored merge key. PORT14-4 discharges the limit
+// the second pin held, and its expectation flips to the
+// merged reading.
 
 #[test]
 fn test_an_alias_key_to_an_anchored_merge_key_still_refuses() {
@@ -147,5 +149,8 @@ fn test_an_alias_key_to_an_anchored_merge_key_still_refuses() {
 
 #[test]
 fn test_an_alias_key_to_an_anchored_merge_key_refuses_where_the_value_can_merge() {
-    assert_eq!(reads("&m <<: {b: 2}\n? *m\n: {c: 3}\n"), None);
+    assert_eq!(
+        reads("&m <<: {b: 2}\n? *m\n: {c: 3}\n"),
+        Some("{'b': 2, 'c': 3}".to_string())
+    );
 }
