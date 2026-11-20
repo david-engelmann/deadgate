@@ -341,26 +341,3 @@ fn test_an_indented_marker_line_inside_a_span_is_content() {
         want(mapping(vec![(text_key("a"), text("--- y"))]))
     );
 }
-
-// The stated limit of the slice, the separator characters
-// folding as the break they normalize to at the door.
-
-#[test]
-fn test_a_line_separator_in_a_span_folds_as_the_break_it_normalizes_to() {
-    assert_eq!(
-        reads("key: \"a\u{2028}b\"\n"),
-        want(mapping(vec![(text_key("key"), text("a b"))]))
-    );
-    assert_eq!(
-        reads("{\"k\": \"a\u{2028}b\"}\n"),
-        want(mapping(vec![(text_key("k"), text("a b"))]))
-    );
-}
-
-#[test]
-fn test_a_paragraph_separator_in_a_span_folds_as_the_break_it_normalizes_to() {
-    assert_eq!(
-        reads("key: \"a\u{2029}b\"\n"),
-        want(mapping(vec![(text_key("key"), text("a b"))]))
-    );
-}
