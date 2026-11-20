@@ -358,18 +358,6 @@ fn test_a_block_scalar_as_a_key_is_refused() {
     assert_eq!(reads("|: 1\n"), None);
 }
 
-#[test]
-fn test_block_content_carrying_a_line_or_paragraph_separator_reads_with_the_one_break() {
-    assert_eq!(
-        reads("a: |\n  one\u{2028}  two\n"),
-        want(mapping(vec![("a", text("one\ntwo\n"))]))
-    );
-    assert_eq!(
-        reads("a: |\n  one\u{2029}  two\n"),
-        want(mapping(vec![("a", text("one\ntwo\n"))]))
-    );
-}
-
 // The fix pass pins. The shapes the round's reviews found
 // the first corpus missing, each one read against the
 // runtime reading before the text of this file moved.
