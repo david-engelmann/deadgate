@@ -3239,10 +3239,11 @@ fn read_explicit_key_text(
         // gathers the key's continuation standing on the
         // following lines, the chunks folding by the run
         // rule as a block plain scalar folds, the gathering
-        // stopping at the pair's colon line. A key whose
+        // stopping at the pair's colon line and at a line
+        // carrying a mapping pair of its own. A key whose
         // line ends at a line feed keeps the standing
         // reading whole.
-        let gathered = gather_explicit_plain_key(cursor, indent, plain_text);
+        let gathered = gather_explicit_plain_key(cursor, indent, plain_text, &state.bindings);
         let plain_text: &str = match &gathered {
             Some(text) => text.as_str(),
             None => plain_text,
@@ -3269,16 +3270,20 @@ fn read_explicit_key_text(
 /// the run rule over the breaks standing between them.
 /// The gathering walks the lines behind the key's own line
 /// while they stand deeper than the mapping and are not
-/// the pair's colon line, blank lines between chunks
-/// standing in the run as they stand in a block plain
-/// scalar, and a comment line ends the gathering as it
-/// ends a plain scalar. Hands back nothing when the key
-/// stands on one line, and advances the cursor past the
-/// gathered lines when it hands a folded key back.
+/// the pair's colon line and do not carry a mapping pair
+/// of their own, a line carrying a pair ending the
+/// gathering as the runtime reading refuses the document
+/// at that line, blank lines between chunks standing in
+/// the run as they stand in a block plain scalar, and a
+/// comment line ends the gathering as it ends a plain
+/// scalar. Hands back nothing when the key stands on one
+/// line, and advances the cursor past the gathered lines
+/// when it hands a folded key back.
 fn gather_explicit_plain_key(
     cursor: &mut Cursor,
     indent: usize,
     first_text: &str,
+    bindings: &HashMap<String, String>,
 ) -> Option<String> {
     let key_line = cursor.pos.checked_sub(1)?;
     if !cursor.lines[key_line].kind.is_separator() {
@@ -3302,6 +3307,7 @@ fn gather_explicit_plain_key(
         if next.text.trim_start().starts_with('#')
             || next.indent <= indent
             || colon_opening(&next.text)
+            || mapping_shape(&next.text, bindings)
         {
             break;
         }
@@ -4950,7 +4956,11 @@ impl<'a> FlowParser<'a> {
                         return None;
                     }
                     match self.chars.get(end) {
-                        None | Some(' ' | '\t' | '\n' | '\r' | ',' | ']' | '}' | ':') => {}
+                        None
+                        | Some(
+                            ' ' | '\t' | '\n' | '\r' | '\u{2028}' | '\u{2029}' | ',' | ']' | '}'
+                            | ':',
+                        ) => {}
                         _ => return None,
                     }
                     props.anchor = Some(self.chars[start..end].iter().collect());
@@ -4997,7 +5007,10 @@ impl<'a> FlowParser<'a> {
         }
         let mut end = self.pos;
         while end < self.chars.len()
-            && !matches!(self.chars[end], ' ' | '\t' | '\n' | '\r' | ',' | ']' | '}')
+            && !matches!(
+                self.chars[end],
+                ' ' | '\t' | '\n' | '\r' | '\u{2028}' | '\u{2029}' | ',' | ']' | '}'
+            )
         {
             end += 1;
         }
@@ -5330,14 +5343,25 @@ impl<'a> FlowParser<'a> {
                             }
                             ',' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => return None,
                             _ => {
+                                let token_start = self.pos;
                                 let folded = self.scan_plain_token()?;
+                                let scanned: String =
+                                    self.chars[token_start..self.pos].iter().collect();
                                 if !explicit_pair
-                                    && (folded.contains('\u{2028}') || folded.contains('\u{2029}'))
+                                    && (scanned.contains('\u{2028}')
+                                        || scanned.contains('\u{2029}'))
                                 {
                                     // A plain key carrying a
                                     // separator refuses in flow
                                     // position, under PORT15-5,
-                                    // the explicit key form
+                                    // the check reading the
+                                    // token as it stands
+                                    // scanned, before its
+                                    // trailing break run folds
+                                    // away, so a separator at
+                                    // the token's tail refuses
+                                    // as one inside it does,
+                                    // and the explicit key form
                                     // standing outside the
                                     // refusal as the runtime
                                     // reads it.
