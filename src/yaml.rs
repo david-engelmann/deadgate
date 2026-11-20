@@ -1523,6 +1523,31 @@ fn mapping_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
     }
 }
 
+/// Whether a line's text carries a mapping pair of its own,
+/// a property standing in front of the pair counted as
+/// standing in front of the pair. The test differs from the
+/// mapping shape test at one sub shape alone. A bare
+/// explicit opening, the question mark standing alone on
+/// the line or in front of a space with no pair standing
+/// behind it on the line, carries no pair, and an opening
+/// whose key standing behind the question mark carries a
+/// pair of its own carries that pair, read by this same
+/// test on the text standing behind the opening.
+fn mapping_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
+    let rest = match split_key_properties(text, bindings) {
+        KeySplit::Props(_, offset) => &text[offset..],
+        KeySplit::None => text,
+        KeySplit::Refuse => return false,
+    };
+    if find_key_split(rest).is_some() || flow_key_split(rest).is_some() || alias_key_shape(rest) {
+        return true;
+    }
+    match rest.strip_prefix("? ") {
+        Some(behind) => mapping_pair_shape(behind, bindings),
+        None => false,
+    }
+}
+
 /// Where a flow collection standing as a compact key ends on
 /// its line, as the byte index just past the collection and
 /// the byte index just past the pair's colon, when the text
@@ -3307,7 +3332,7 @@ fn gather_explicit_plain_key(
         if next.text.trim_start().starts_with('#')
             || next.indent <= indent
             || colon_opening(&next.text)
-            || mapping_shape(&next.text, bindings)
+            || mapping_pair_shape(&next.text, bindings)
         {
             break;
         }

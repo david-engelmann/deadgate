@@ -458,3 +458,96 @@ fn test_a_trailing_separator_under_strip_chomping_reads_as_nothing() {
         Some("{'a': 'one'}".to_string())
     );
 }
+
+// The pins of the second repair of Rust port slice 15,
+// standing as an addition at the end of tests/separators.rs
+// behind the pins of the repair itself. Each pin names the
+// correction to the note beside PORT15-4 that carries it in
+// its section comment.
+
+// The second repair beside PORT15-4, a bare explicit
+// opening line folding into a gathered key as text, and an
+// opening carrying a pair of its own still stopping the
+// gathering.
+
+#[test]
+fn test_a_bare_explicit_opening_with_one_word_behind_it_folds_as_text_in_a_gathered_key() {
+    assert_eq!(
+        reads("? a\u{2028} ? b\n: 1\n"),
+        Some("{'a\\u2028? b': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_question_mark_standing_alone_on_its_line_folds_as_text_in_a_gathered_key() {
+    assert_eq!(
+        reads("? a\u{2028} ?\n: 1\n"),
+        Some("{'a\\u2028?': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_explicit_opening_with_several_words_behind_it_folds_as_text_in_a_gathered_key() {
+    assert_eq!(
+        reads("? a\u{2028} ? b c\n: 1\n"),
+        Some("{'a\\u2028? b c': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_explicit_opening_behind_a_paragraph_separator_ended_key_folds_as_text() {
+    assert_eq!(
+        reads("? a\u{2029} ? b\n: 1\n"),
+        Some("{'a\\u2029? b': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_explicit_opening_carrying_a_quoted_key_with_no_colon_behind_it_folds_as_text() {
+    assert_eq!(
+        reads("? a\u{2028} ? \"b\"\n: 1\n"),
+        Some("{'a\\u2028? \"b\"': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_explicit_opening_at_a_deeper_indent_behind_an_empty_segment_folds_as_text() {
+    assert_eq!(
+        reads("? a\u{2028}\n  ? b\n: 1\n"),
+        Some("{'a\\u2028\\n? b': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_explicit_opening_standing_behind_a_gathered_chunk_folds_as_text() {
+    assert_eq!(
+        reads("? a\u{2028} b\n ? c\n: 1\n"),
+        Some("{'a\\u2028b ? c': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_an_explicit_opening_carrying_a_pair_of_its_own_stops_the_gathering_and_refuses() {
+    assert_eq!(reads("? a\u{2028} ? b: 2\n: 1\n"), None);
+    assert_eq!(reads("? a\u{2028} ? \"b\": 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_question_mark_glued_to_its_word_folds_as_text_in_a_gathered_key() {
+    assert_eq!(
+        reads("? a\u{2028} ?b\n: 1\n"),
+        Some("{'a\\u2028?b': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_bare_explicit_opening_standing_behind_an_opening_or_a_property_folds_as_text() {
+    assert_eq!(
+        reads("? a\u{2028} ? ? b\n: 1\n"),
+        Some("{'a\\u2028? ? b': 1}".to_string())
+    );
+    assert_eq!(
+        reads("? a\u{2028} ? &a b\n: 1\n"),
+        Some("{'a\\u2028? &a b': 1}".to_string())
+    );
+}
