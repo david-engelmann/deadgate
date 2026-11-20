@@ -249,3 +249,212 @@ fn test_a_separator_spelled_by_an_escape_stands_as_content_as_it_does_today() {
 fn test_a_separator_standing_as_the_whole_document_reads_as_the_empty_document() {
     assert_eq!(reads("\u{2028}"), Some("None".to_string()));
 }
+
+// The pins of the repair of Rust port slice 15, standing
+// as an addition at the end of tests/separators.rs behind
+// the pins of the slice itself. Each pin names the note
+// that carries it in its section comment.
+
+// The repair beside PORT15-4, the explicit key gathering
+// stopping at a line carrying a pair of its own.
+
+#[test]
+fn test_a_pair_line_behind_a_separator_ended_explicit_key_stops_the_gathering_and_refuses() {
+    assert_eq!(reads("? a\u{2028} b: 2\n: 1\n"), None);
+    assert_eq!(reads("? a\u{2028} b:\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_quoted_pair_line_behind_a_separator_ended_explicit_key_stops_the_gathering_and_refuses() {
+    assert_eq!(reads("? a\u{2028} \"b\": 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_flow_shaped_pair_line_behind_a_separator_ended_explicit_key_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2028} [b]: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_pair_line_at_a_deeper_indent_behind_an_empty_segment_stops_the_gathering_and_refuses() {
+    assert_eq!(reads("? a\u{2028}\n  b: 2\n: 1\n"), None);
+    assert_eq!(reads("? a\u{2028}\n\n  b: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_pair_line_with_no_colon_line_behind_it_stops_the_gathering_and_refuses() {
+    assert_eq!(reads("? a\u{2028} b: 2"), None);
+    assert_eq!(reads("? a\u{2028} b: 2\n"), None);
+}
+
+#[test]
+fn test_a_pair_line_behind_a_paragraph_separator_ended_explicit_key_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2029} b: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_pair_line_standing_behind_a_gathered_chunk_stops_the_gathering_and_refuses() {
+    assert_eq!(reads("? a\u{2028} b\n c: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_dash_line_behind_a_separator_ended_explicit_key_folds_as_text() {
+    assert_eq!(
+        reads("? a\u{2028} - b\n: 1\n"),
+        Some("{'a\\u2028- b': 1}".to_string())
+    );
+    assert_eq!(
+        reads("? a\u{2028}\n  - b\n: 1\n"),
+        Some("{'a\\u2028\\n- b': 1}".to_string())
+    );
+    assert_eq!(
+        reads("? a\u{2028} -b\n: 1\n"),
+        Some("{'a\\u2028-b': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_colon_with_no_space_behind_it_folds_as_text_in_a_gathered_key() {
+    assert_eq!(
+        reads("? a\u{2028} b:2\n: 1\n"),
+        Some("{'a\\u2028b:2': 1}".to_string())
+    );
+}
+
+// The repair beside PORT15-5, the flow plain key refusal
+// reading the token as it stands scanned.
+
+#[test]
+fn test_a_flow_plain_key_ending_at_a_separator_is_refused() {
+    assert_eq!(reads("{a\u{2028}: 1}\n"), None);
+}
+
+#[test]
+fn test_a_flow_plain_key_ending_at_a_separator_with_a_space_in_front_of_it_is_refused() {
+    assert_eq!(reads("{a \u{2028}: 1}\n"), None);
+}
+
+#[test]
+fn test_a_flow_plain_key_ending_at_a_separator_with_a_space_behind_it_is_refused() {
+    assert_eq!(reads("{a\u{2028} : 1}\n"), None);
+}
+
+#[test]
+fn test_a_flow_plain_key_ending_at_a_paragraph_separator_is_refused() {
+    assert_eq!(reads("{a\u{2029}: 1}\n"), None);
+    assert_eq!(reads("{a\u{2029} : 1}\n"), None);
+}
+
+#[test]
+fn test_a_flow_plain_key_ending_at_a_separator_inside_a_nested_mapping_is_refused() {
+    assert_eq!(reads("[{a\u{2028}: 1}]\n"), None);
+    assert_eq!(reads("{k: {a\u{2028}: 1}}\n"), None);
+}
+
+// The repair beside PORT15-5, the flow anchor and tag
+// token end sets taking the separators as separation.
+
+#[test]
+fn test_a_flow_anchor_ending_at_a_separator_stands_as_separation() {
+    assert_eq!(reads("[&a\u{2028} b]\n"), Some("['b']".to_string()));
+}
+
+#[test]
+fn test_a_flow_tag_ending_at_a_separator_stands_as_separation() {
+    assert_eq!(reads("[!!str\u{2028} a]\n"), Some("['a']".to_string()));
+}
+
+#[test]
+fn test_a_flow_anchor_standing_against_a_separator_reads_the_entry_behind_it() {
+    assert_eq!(reads("[&a\u{2028}b]\n"), Some("['b']".to_string()));
+    assert_eq!(reads("[&a\u{2029}b]\n"), Some("['b']".to_string()));
+}
+
+#[test]
+fn test_a_flow_anchor_ending_at_a_separator_before_a_comma_stands_as_separation() {
+    assert_eq!(reads("[&a\u{2028}, b]\n"), Some("[None, 'b']".to_string()));
+}
+
+#[test]
+fn test_a_flow_anchor_ending_at_a_paragraph_separator_stands_as_separation() {
+    assert_eq!(reads("[&a\u{2029} b]\n"), Some("['b']".to_string()));
+}
+
+#[test]
+fn test_a_flow_tag_ending_at_a_paragraph_separator_stands_as_separation() {
+    assert_eq!(reads("[!!str\u{2029} a]\n"), Some("['a']".to_string()));
+}
+
+// The repair beside PORT15-3, the block corner and the
+// trailing standings standing pinned as proof completions.
+
+#[test]
+fn test_a_block_whose_only_content_line_is_a_separator_reads_empty_under_clip_chomping() {
+    assert_eq!(reads("a: |\n  \u{2028}\n"), Some("{'a': ''}".to_string()));
+    assert_eq!(reads("a: |\n  \u{2029}\n"), Some("{'a': ''}".to_string()));
+    assert_eq!(reads("a: >\n  \u{2028}\n"), Some("{'a': ''}".to_string()));
+}
+
+#[test]
+fn test_a_block_whose_only_content_line_is_a_separator_keeps_the_separator_under_keep_chomping() {
+    assert_eq!(
+        reads("a: |+\n  \u{2028}\n"),
+        Some("{'a': '\\u2028\\n'}".to_string())
+    );
+    assert_eq!(
+        reads("a: |+\n  \u{2029}\n"),
+        Some("{'a': '\\u2029\\n'}".to_string())
+    );
+    assert_eq!(
+        reads("a: >+\n  \u{2028}\n"),
+        Some("{'a': '\\u2028\\n'}".to_string())
+    );
+}
+
+#[test]
+fn test_a_block_whose_only_content_line_is_a_separator_reads_empty_under_strip_chomping() {
+    assert_eq!(reads("a: |-\n  \u{2028}\n"), Some("{'a': ''}".to_string()));
+    assert_eq!(reads("a: |-\n  \u{2029}\n"), Some("{'a': ''}".to_string()));
+    assert_eq!(reads("a: >-\n  \u{2029}\n"), Some("{'a': ''}".to_string()));
+}
+
+#[test]
+fn test_a_trailing_separator_under_clip_chomping_stands_as_content() {
+    assert_eq!(
+        reads("a: |\n  one\u{2028}\n"),
+        Some("{'a': 'one\\u2028'}".to_string())
+    );
+    assert_eq!(
+        reads("a: |\n  one\u{2029}\n"),
+        Some("{'a': 'one\\u2029'}".to_string())
+    );
+    assert_eq!(
+        reads("a: >\n  one\u{2028}\n"),
+        Some("{'a': 'one\\u2028'}".to_string())
+    );
+    assert_eq!(
+        reads("a: >\n  one\u{2029}\n"),
+        Some("{'a': 'one\\u2029'}".to_string())
+    );
+}
+
+#[test]
+fn test_a_trailing_line_separator_under_keep_chomping_stands_with_the_break_behind_it() {
+    assert_eq!(
+        reads("a: |+\n  one\u{2028}\n"),
+        Some("{'a': 'one\\u2028\\n'}".to_string())
+    );
+}
+
+#[test]
+fn test_a_trailing_separator_under_strip_chomping_reads_as_nothing() {
+    assert_eq!(
+        reads("a: |-\n  one\u{2028}\n"),
+        Some("{'a': 'one'}".to_string())
+    );
+    assert_eq!(
+        reads("a: |-\n  one\u{2029}\n"),
+        Some("{'a': 'one'}".to_string())
+    );
+}
