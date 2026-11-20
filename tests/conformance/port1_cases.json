@@ -7515,7 +7515,7 @@
           111,
           110,
           101,
-          10,
+          8232,
           116,
           119,
           111,
@@ -7525,8 +7525,7 @@
        ]
       ]
      }
-    },
-    "port_stated": true
+    }
    },
    {
     "name": "block paragraph separator at the end under keep",
@@ -7546,14 +7545,13 @@
           111,
           110,
           101,
-          10
+          8233
          ]
         }
        ]
       ]
      }
-    },
-    "port_stated": true
+    }
    },
    {
     "name": "block line separator inside folded content",
@@ -7573,7 +7571,7 @@
           111,
           110,
           101,
-          32,
+          8232,
           116,
           119,
           111,
@@ -7583,8 +7581,7 @@
        ]
       ]
      }
-    },
-    "port_stated": true
+    }
    },
    {
     "name": "block spaces only line alone before a sibling",
@@ -29316,14 +29313,17 @@
          "v": "key"
         },
         {
-         "t": "str",
-         "v": "a b"
+         "t": "strcp",
+         "v": [
+          97,
+          8232,
+          98
+         ]
         }
        ]
       ]
      }
-    },
-    "port_stated": true
+    }
    },
    {
     "name": "paragraph separator inside a span folds as a break",
@@ -29338,14 +29338,17 @@
          "v": "key"
         },
         {
-         "t": "str",
-         "v": "a b"
+         "t": "strcp",
+         "v": [
+          97,
+          8233,
+          98
+         ]
         }
        ]
       ]
      }
-    },
-    "port_stated": true
+    }
    },
    {
     "name": "line separator in a flow span folds as a break",
@@ -29360,14 +29363,17 @@
          "v": "k"
         },
         {
-         "t": "str",
-         "v": "a b"
+         "t": "strcp",
+         "v": [
+          97,
+          8232,
+          98
+         ]
         }
        ]
       ]
      }
-    },
-    "port_stated": true
+    }
    },
    {
     "name": "blank before a backslash break stands",
@@ -34350,6 +34356,819 @@
          ]
         ]
        }
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator inside a double quoted scalar stands as itself",
+    "text": "\"a b\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "paragraph separator inside a single quoted scalar stands as itself",
+    "text": "'a b'",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8233,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator and a line feed inside a double quoted span stand in order",
+    "text": "\"a \nb\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       10,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "line feed and a line separator inside a double quoted span fold to the separator",
+    "text": "\"a\n b\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator and paragraph separator inside a double quoted span stand in order",
+    "text": "\"a  b\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       8233,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "blanks beside a line separator inside a double quoted span are trimmed",
+    "text": "\"a   b\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "escaped line separator inside a double quoted scalar stands as content",
+    "text": "\"a\\Lb\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "escaped paragraph separator inside a double quoted scalar stands as content",
+    "text": "\"a\\Pb\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8233,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator inside a single quoted mapping value stands as itself",
+    "text": "a: 'x y'",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator and two line feeds inside a double quoted span stand in order",
+    "text": "\"a \n\nb\"",
+    "expect": {
+     "ok": {
+      "t": "strcp",
+      "v": [
+       97,
+       8232,
+       10,
+       10,
+       98
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a line separator and a space behind it",
+    "text": "a: x  y",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a paragraph separator at the end of its line",
+    "text": "a: x \n y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8233,
+          10,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a line feed and a line separator between its chunks",
+    "text": "a: x\n  y\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a separator standing after a blank run",
+    "text": "a: x\n\n  y",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          10,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a blank before a separator at the end of its line",
+    "text": "a: x   y",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a separator standing before a sibling pair",
+    "text": "a: x  y\nb: 2",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block plain value with a paragraph separator and a space behind it",
+    "text": "a: x  y",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8233,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "sequence entry plain value with a line separator and a space behind it",
+    "text": "- x  y",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "strcp",
+        "v": [
+         120,
+         8232,
+         121
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow plain value with a line separator standing as content",
+    "text": "{a: x y}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow plain value with blanks beside a line separator trimmed",
+    "text": "{a: x   y}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "line separator standing as separation in a flow sequence",
+    "text": "[x, y]",
+    "expect": {
+     "ok": {
+      "t": "list",
+      "v": [
+       {
+        "t": "str",
+        "v": "x"
+       },
+       {
+        "t": "str",
+        "v": "y"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow plain value with a separator and a line feed standing after it",
+    "text": "{a: x \ny}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8232,
+          10,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "comment inside a flow mapping ending at a line separator",
+    "text": "{a: 1, # c b: 2}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "2"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "flow plain value with a paragraph separator standing as content",
+    "text": "{a: x y}",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          120,
+          8233,
+          121
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "literal block with a line separator at the end of a content line",
+    "text": "a: |\n  one \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          8232,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "folded block with a line separator at the end of a content line",
+    "text": "a: >\n  one \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          8232,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "literal block with a line separator standing alone on a line",
+    "text": "a: |\n  one\n   \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          8232,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "folded block with a line separator standing alone on a line",
+    "text": "a: >\n  one\n   \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          8232,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "literal block with content standing behind a line separator",
+    "text": "a: |\n  one   two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          8232,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block under keep with a paragraph separator at the end of its content",
+    "text": "a: |+\n  one \n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          8233,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block under strip with a paragraph separator at the end of its content",
+    "text": "a: |-\n  one \n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "str",
+         "v": "one"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "literal block with a line separator standing before its first content line",
+    "text": "a: |\n   \n  one\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          8232,
+          10,
+          111,
+          110,
+          101,
+          10
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "block under keep whose lines are only separator spaces lines",
+    "text": "a: |+\n   \n   \nb: 1\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          8232,
+          10,
+          8232,
+          10
+         ]
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "name": "folded block with a more indented line separator line",
+    "text": "a: >\n  one\n     \n  two\n",
+    "expect": {
+     "ok": {
+      "t": "obj",
+      "v": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "strcp",
+         "v": [
+          111,
+          110,
+          101,
+          10,
+          32,
+          32,
+          8232,
+          10,
+          116,
+          119,
+          111,
+          10
+         ]
+        }
+       ]
       ]
      }
     }
