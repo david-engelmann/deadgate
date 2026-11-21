@@ -1064,6 +1064,9 @@ impl Props {
 /// is a list, and the source text when it is a scalar node,
 /// so a tag standing outside the node's own lines can still
 /// convert it.
+/// The bar stands on a mapping whose raw standing was not
+/// one pair free of a merge key, and on a list carrying
+/// such a mapping as an entry, and nowhere else.
 #[derive(Clone)]
 struct Built {
     value: YamlValue,
@@ -1072,6 +1075,7 @@ struct Built {
     text: Option<String>,
     plain_token: Option<String>,
     tag_done: bool,
+    entry_barred: bool,
 }
 
 impl Built {
@@ -1083,6 +1087,7 @@ impl Built {
             text: None,
             plain_token: None,
             tag_done: false,
+            entry_barred: false,
         }
     }
 
@@ -1096,6 +1101,7 @@ impl Built {
             text: Some(String::new()),
             plain_token: None,
             tag_done: false,
+            entry_barred: false,
         }
     }
 
@@ -1107,6 +1113,7 @@ impl Built {
             text: Some(text),
             plain_token: None,
             tag_done: false,
+            entry_barred: false,
         }
     }
 
@@ -1118,12 +1125,14 @@ impl Built {
             text: None,
             plain_token: None,
             tag_done: true,
+            entry_barred: false,
         }
     }
 
     fn list(items: Vec<Built>) -> Built {
         let tallies: Vec<usize> = items.iter().map(|item| item.tally).collect();
         let tally = tallies.iter().sum();
+        let entry_barred = items.iter().any(|item| item.entry_barred);
         Built {
             value: YamlValue::List(items.into_iter().map(|item| item.value).collect()),
             tally,
@@ -1131,6 +1140,7 @@ impl Built {
             text: None,
             plain_token: None,
             tag_done: false,
+            entry_barred,
         }
     }
 }
@@ -1174,7 +1184,7 @@ impl ReadState {
         Some(())
     }
 
-    fn bind(&mut self, name: &str, built: &Built) {
+    fn bind(&mut self, name: &str, built: &Built, tag: &Tag) {
         self.building.remove(name);
         self.bound.insert(
             name.to_string(),
@@ -1182,7 +1192,7 @@ impl ReadState {
                 value: built.value.clone(),
                 tally: built.tally,
                 items: built.items.clone(),
-                merge_key: built.plain_token.as_deref() == Some("<<"),
+                merge_key: built.plain_token.as_deref() == Some("<<") || *tag == Tag::Merge,
             },
         );
     }
@@ -1214,6 +1224,7 @@ impl ReadState {
             text: None,
             plain_token: None,
             tag_done: false,
+            entry_barred: false,
         })
     }
 }
@@ -1274,6 +1285,7 @@ fn flatten_mapping(
     merge_sources: Vec<Built>,
     explicit: Vec<(YamlKey, Built)>,
 ) -> Option<Built> {
+    let entry_barred = merge_sources.len() + explicit.len() != 1 || !merge_sources.is_empty();
     let mut merged: Vec<(YamlKey, YamlValue)> = Vec::new();
     let mut tally = 0usize;
     for source in merge_sources {
@@ -1294,6 +1306,7 @@ fn flatten_mapping(
         text: None,
         plain_token: None,
         tag_done: false,
+        entry_barred,
     })
 }
 
@@ -2183,6 +2196,7 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
                     text: None,
                     plain_token: None,
                     tag_done: true,
+                    entry_barred: false,
                 })
             } else {
                 None
@@ -2193,6 +2207,12 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
             // whose key and value are the one pair of the
             // mapping the entry carries, any other entry
             // refusing the reading whole.
+            // An entry whose raw standing was not one pair
+            // free of a merge key refuses the reading whole
+            // on the bar its building recorded.
+            if built.entry_barred {
+                return None;
+            }
             if let YamlValue::List(items) = built.value {
                 let mut pairs: Vec<(YamlKey, YamlValue)> = Vec::new();
                 for item in items {
@@ -2210,24 +2230,35 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
                     text: None,
                     plain_token: None,
                     tag_done: true,
+                    entry_barred: false,
                 })
             } else {
                 None
             }
         }
         Tag::Merge => {
-            // The merge tag is a key's tag, and the one
-            // node it settles is the plain merge spelling
-            // itself, which the flow plain reading stands
-            // carrying its plain token for the consumers
-            // that can take it as a key to read. The
-            // settlement hands that node over as it stands,
-            // and every other node under the tag refuses
-            // here as it refuses today.
-            if built.plain_token.as_deref() == Some("<<") {
-                Some(built)
-            } else {
+            // The merge tag is a key's tag, and the node it
+            // settles is the scalar node standing under it,
+            // whatever the node's text and whatever its
+            // style, plain or quoted or empty, which the
+            // consumers that can take it as a key to read
+            // take on the tag standing the pair branch's
+            // merge condition names. The settlement hands
+            // that node over as it stands, and a collection
+            // standing under the tag refuses here as it
+            // refuses today, and the positions that cannot
+            // take the node as a key refuse it on the tag
+            // standing at their own seats.
+            if matches!(
+                built.value,
+                YamlValue::List(_)
+                    | YamlValue::Mapping(_)
+                    | YamlValue::Set(_)
+                    | YamlValue::Pairs(_)
+            ) {
                 None
+            } else {
+                Some(built)
             }
         }
         _ if tag.is_constructor() => {
@@ -2243,6 +2274,7 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
                 text: None,
                 plain_token: None,
                 tag_done: true,
+                entry_barred: false,
             })
         }
         _ => None,
@@ -2254,9 +2286,21 @@ fn apply_tag(tag: &Tag, built: Built) -> Option<Built> {
 fn finish_props(state: &mut ReadState, props: Props, built: Built) -> Option<Built> {
     let built = apply_tag(&props.tag, built)?;
     if let Some(name) = &props.anchor {
-        state.bind(name, &built);
+        state.bind(name, &built, &props.tag);
     }
     Some(built)
+}
+/// Settle a node's properties where the node stands in
+/// value position, at a block mapping's value or a block
+/// sequence's entry or a node standing alone. A node under
+/// the merge tag refuses there, the merge tag settling
+/// only a node a consumer can take as a key, and the block
+/// readings settle every key of theirs at their own seats.
+fn finish_value_props(state: &mut ReadState, props: Props, built: Built) -> Option<Built> {
+    if props.tag == Tag::Merge {
+        return None;
+    }
+    finish_props(state, props, built)
 }
 
 /// The char spans of the lines standing inside block scalar
@@ -3037,7 +3081,7 @@ fn parse_block(
                 }
                 let built =
                     read_following_block(cursor, &line, parent_indent, depth, state, &props.tag)?;
-                return finish_props(state, props, built);
+                return finish_value_props(state, props, built);
             }
         }
         PropSplit::None => {}
@@ -3510,7 +3554,7 @@ fn parse_mapping(
                                 let built = following_block_value(
                                     cursor, indent, depth, state, &props.tag,
                                 )?;
-                                finish_props(state, props, built)?
+                                finish_value_props(state, props, built)?
                             }
                             _ => parse_inline_value(
                                 &value_text,
@@ -3625,7 +3669,7 @@ fn parse_mapping(
                         state.mark(name)?;
                     }
                     let built = following_block_value(cursor, indent, depth, state, &props.tag)?;
-                    finish_props(state, props, built)?
+                    finish_value_props(state, props, built)?
                 }
                 _ => parse_inline_value(&rest, cursor, indent, indent, depth + 1, state)?,
             }
@@ -3702,7 +3746,7 @@ fn parse_sequence(
                         }
                     }
                 };
-                items.push(finish_props(state, props, built)?);
+                items.push(finish_value_props(state, props, built)?);
                 continue;
             }
             _ => {}
@@ -4254,7 +4298,7 @@ fn parse_inline_value(
                         &props.tag,
                     )?
                 };
-                return finish_props(state, props, built);
+                return finish_value_props(state, props, built);
             }
             PropSplit::None => {}
         }
@@ -4467,6 +4511,7 @@ fn parse_inline_node(
                 text: Some(folded),
                 plain_token: None,
                 tag_done: false,
+                entry_barred: false,
             })
         }
     }
@@ -5110,9 +5155,13 @@ impl<'a> FlowParser<'a> {
             if let Some(name) = &props.anchor {
                 self.state.mark(name)?;
             }
-            if matches!(self.peek(), Some(',') | Some(']') | Some('}')) {
+            if matches!(self.peek(), Some(',') | Some(']') | Some('}') | Some(':')) {
                 // The property stands in front of no node, the
-                // empty scalar standing as its node.
+                // empty scalar standing as its node, and the
+                // colon of the pair the empty node keys leaves
+                // it standing the same way, the pair branch
+                // taking the colon up itself and judging the
+                // node on the tag standing recorded behind it.
                 let built = finish_props(self.state, props.clone(), Built::empty_scalar())?;
                 self.last_plain = None;
                 self.last_anchor = props.anchor.is_some();
@@ -5155,7 +5204,7 @@ impl<'a> FlowParser<'a> {
                             Some(',') | Some(']') => Built::scalar(YamlValue::Null),
                             _ => self.parse_value(depth + 1)?,
                         };
-                        if self.last_plain.as_deref() == Some("<<") {
+                        if self.last_plain.as_deref() == Some("<<") || self.last_tag == Tag::Merge {
                             return None;
                         }
                         if item_plain.as_deref() == Some("<<") || item_tag == Tag::Merge {
@@ -5173,6 +5222,7 @@ impl<'a> FlowParser<'a> {
                                 text: None,
                                 plain_token: None,
                                 tag_done: false,
+                                entry_barred: true,
                             }
                         } else {
                             let _ = item_anchor;
@@ -5187,12 +5237,14 @@ impl<'a> FlowParser<'a> {
                                 text: None,
                                 plain_token: None,
                                 tag_done: false,
+                                entry_barred: false,
                             }
                         }
                     } else {
-                        if item_plain.as_deref() == Some("<<") {
-                            // The plain merge spelling standing
-                            // in entry position refuses.
+                        if item_plain.as_deref() == Some("<<") || item_tag == Tag::Merge {
+                            // The plain merge spelling and a node
+                            // under the merge tag standing in
+                            // entry position refuse.
                             return None;
                         }
                         item
@@ -5422,10 +5474,13 @@ impl<'a> FlowParser<'a> {
                             Some(',') | Some('}') => Built::scalar(YamlValue::Null),
                             _ => {
                                 let value = self.parse_value(depth + 1)?;
-                                if self.last_plain.as_deref() == Some("<<") {
+                                if self.last_plain.as_deref() == Some("<<")
+                                    || self.last_tag == Tag::Merge
+                                {
                                     // The plain merge spelling
-                                    // standing in value position
-                                    // refuses.
+                                    // and a node under the merge
+                                    // tag standing in value
+                                    // position refuse.
                                     return None;
                                 }
                                 value
@@ -5582,6 +5637,7 @@ impl<'a> FlowParser<'a> {
                 text: Some("<<".to_string()),
                 plain_token: Some("<<".to_string()),
                 tag_done: false,
+                entry_barred: false,
             });
         }
         let value = resolve_plain_scalar(&folded)?;
@@ -5592,6 +5648,7 @@ impl<'a> FlowParser<'a> {
             text: Some(folded),
             plain_token: None,
             tag_done: false,
+            entry_barred: false,
         })
     }
 }
