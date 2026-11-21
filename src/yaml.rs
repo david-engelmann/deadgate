@@ -1561,6 +1561,97 @@ fn mapping_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
     }
 }
 
+/// Whether a line's text carries a mapping value colon
+/// standing in dress, a colon standing inside a quoted
+/// span or inside a flow collection or a plain pair
+/// standing behind a quoted span the line carries, where
+/// a mapping value colon is a colon standing in front of
+/// a space or a tab or the text's end. The walk follows
+/// the flow key split its discipline, brackets counted
+/// outside spans and spans closing under their own rules,
+/// a quote opening where a scalar can stand on the line,
+/// at the text's start or behind a bracket or a comma or
+/// a colon or a space or a tab, and a comment opening
+/// ending the walk as the comment cut ends a chunk. A
+/// stray closing bracket ends the walk with no dress
+/// found. The properties standing in front of the line's
+/// own text are split away first, as the pair shape test
+/// splits them.
+fn dressed_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
+    let rest = match split_key_properties(text, bindings) {
+        KeySplit::Props(_, offset) => &text[offset..],
+        KeySplit::None => text,
+        KeySplit::Refuse => return false,
+    };
+    let bytes = rest.as_bytes();
+    let mut depth = 0i64;
+    let mut quote: Option<u8> = None;
+    let mut span_closed = false;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        match quote {
+            Some(b'"') => {
+                if byte == b'\\' {
+                    index += 1;
+                } else if byte == b'"' {
+                    quote = None;
+                    if depth == 0 {
+                        span_closed = true;
+                    }
+                } else if byte == b':' && colon_value_at(bytes, index) {
+                    return true;
+                }
+            }
+            Some(b'\'') => {
+                if byte == b'\'' {
+                    if bytes.get(index + 1) == Some(&b'\'') {
+                        index += 1;
+                    } else {
+                        quote = None;
+                        if depth == 0 {
+                            span_closed = true;
+                        }
+                    }
+                } else if byte == b':' && colon_value_at(bytes, index) {
+                    return true;
+                }
+            }
+            _ => match byte {
+                b'"' | b'\''
+                    if index == 0
+                        || matches!(bytes[index - 1], b'[' | b'{' | b',' | b':' | b' ' | b'\t') =>
+                {
+                    quote = Some(byte);
+                }
+                b'[' | b'{' => depth += 1,
+                b']' | b'}' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+                b'#' if index > 0 && matches!(bytes[index - 1], b' ' | b'\t') => {
+                    return false;
+                }
+                b':' if colon_value_at(bytes, index) && (depth > 0 || span_closed) => {
+                    return true;
+                }
+                _ => {}
+            },
+        }
+        index += 1;
+    }
+    false
+}
+
+/// Whether the colon standing at a byte index is a
+/// mapping value colon, a colon standing in front of a
+/// space or a tab or the text's end.
+fn colon_value_at(bytes: &[u8], index: usize) -> bool {
+    matches!(bytes.get(index + 1), None | Some(b' ') | Some(b'\t'))
+}
+
 /// Where a flow collection standing as a compact key ends on
 /// its line, as the byte index just past the collection and
 /// the byte index just past the pair's colon, when the text
@@ -3340,7 +3431,8 @@ fn read_explicit_key_text(
 /// The gathering walks the lines behind the key's own line
 /// while they stand deeper than the mapping and are not
 /// the pair's colon line and do not carry a mapping pair
-/// of their own, a line carrying a pair ending the
+/// of their own and do not carry a mapping value colon
+/// standing in dress, a line carrying either ending the
 /// gathering as the runtime reading refuses the document
 /// at that line, blank lines between chunks standing in
 /// the run as they stand in a block plain scalar, and a
@@ -3377,6 +3469,7 @@ fn gather_explicit_plain_key(
             || next.indent <= indent
             || colon_opening(&next.text)
             || mapping_pair_shape(&next.text, bindings)
+            || dressed_pair_shape(&next.text, bindings)
         {
             break;
         }
