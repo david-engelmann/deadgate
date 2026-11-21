@@ -1564,20 +1564,27 @@ fn mapping_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
 /// Whether a line's text carries a mapping value colon
 /// standing in dress, a colon standing inside a quoted
 /// span or inside a flow collection or a plain pair
-/// standing behind a quoted span the line carries, where
-/// a mapping value colon is a colon standing in front of
-/// a space or a tab or the text's end. The walk follows
+/// standing behind a quoted span or behind a flow
+/// collection the line carries, where a mapping value
+/// colon is a colon standing in front of a space or a
+/// tab or the text's end. The walk reads the line as the
+/// comment cut leaves it, the cut standing over the
+/// whole line as it stands over the chunk the gathering
+/// folds, and the properties standing in front of the
+/// line's own text are split away behind the cut, as
+/// the pair shape test splits them. The walk follows
 /// the flow key split its discipline, brackets counted
-/// outside spans and spans closing under their own rules,
-/// a quote opening where a scalar can stand on the line,
-/// at the text's start or behind a bracket or a comma or
-/// a colon or a space or a tab, and a comment opening
-/// ending the walk as the comment cut ends a chunk. A
-/// stray closing bracket ends the walk with no dress
-/// found. The properties standing in front of the line's
-/// own text are split away first, as the pair shape test
-/// splits them.
+/// outside spans and spans closing under their own
+/// rules, a quote opening where a scalar can stand on
+/// the line, at the text's start or behind a bracket or
+/// a comma or a colon or a space or a tab. A span
+/// closing at the walk's own depth and a collection
+/// closing there stand remembered alike, and a colon
+/// standing in the open behind either one fires. A
+/// closing bracket standing with no collection open
+/// counts for nothing, and the walk reads on behind it.
 fn dressed_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
+    let text = cut_comment(text);
     let rest = match split_key_properties(text, bindings) {
         KeySplit::Props(_, offset) => &text[offset..],
         KeySplit::None => text,
@@ -1587,6 +1594,7 @@ fn dressed_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
     let mut depth = 0i64;
     let mut quote: Option<u8> = None;
     let mut span_closed = false;
+    let mut collection_closed = false;
     let mut index = 0usize;
     while index < bytes.len() {
         let byte = bytes[index];
@@ -1626,15 +1634,19 @@ fn dressed_pair_shape(text: &str, bindings: &HashMap<String, String>) -> bool {
                 }
                 b'[' | b'{' => depth += 1,
                 b']' | b'}' => {
-                    depth -= 1;
-                    if depth < 0 {
-                        return false;
+                    if depth > 0 {
+                        depth -= 1;
+                        if depth == 0 {
+                            collection_closed = true;
+                        }
                     }
                 }
                 b'#' if index > 0 && matches!(bytes[index - 1], b' ' | b'\t') => {
                     return false;
                 }
-                b':' if colon_value_at(bytes, index) && (depth > 0 || span_closed) => {
+                b':' if colon_value_at(bytes, index)
+                    && (depth > 0 || span_closed || collection_closed) =>
+                {
                     return true;
                 }
                 _ => {}

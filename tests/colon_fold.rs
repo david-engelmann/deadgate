@@ -107,6 +107,36 @@ fn test_a_sequence_entry_mapping_on_a_gathered_line_stops_the_gathering_and_refu
     assert_eq!(reads("? a\u{2028} - {b: 2}\n: 1\n"), None);
 }
 
+#[test]
+fn test_a_plain_pair_behind_a_flow_sequence_holding_a_quoted_entry_on_a_gathered_line_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2028} ['b'] c: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_plain_pair_behind_a_flow_sequence_carrying_no_colon_on_a_gathered_line_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2028} [b, c] d: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_plain_pair_behind_a_flow_mapping_carrying_no_colon_on_a_gathered_line_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2028} {b} c: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_flow_mapping_behind_a_stray_closing_bracket_on_a_gathered_line_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2028} ] {b: 2}\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_quoted_colon_behind_a_stray_closing_bracket_on_a_gathered_line_stops_the_gathering_and_refuses(
+) {
+    assert_eq!(reads("? a\u{2028} ] \"b: c\"\n: 1\n"), None);
+}
+
 // PORT17-2, the borders of the fold standing unmoved.
 
 #[test]
@@ -145,4 +175,30 @@ fn test_a_quoted_span_whose_colon_stands_at_its_end_folds_as_text_in_a_gathered_
 fn test_a_plain_pair_line_behind_a_separator_ended_explicit_key_still_stops_the_gathering_and_refuses(
 ) {
     assert_eq!(reads("? a\u{2028} b: 2\n: 1\n"), None);
+}
+
+#[test]
+fn test_a_colon_behind_a_comment_mark_inside_a_double_quoted_span_folds_as_text_in_a_gathered_key()
+{
+    assert_eq!(
+        reads("? a\u{2028} \"b # c: d\"\n: 1\n"),
+        Some("{'a\\u2028\"b': 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_colon_behind_a_comment_mark_inside_a_single_quoted_span_folds_as_text_in_a_gathered_key()
+{
+    assert_eq!(
+        reads("? a\u{2028} 'b # c: d'\n: 1\n"),
+        Some("{\"a\\u2028'b\": 1}".to_string())
+    );
+}
+
+#[test]
+fn test_a_flow_mapping_behind_a_comment_mark_behind_a_property_folds_as_text_in_a_gathered_key() {
+    assert_eq!(
+        reads("? a\u{2028} &p # {b: 2}\n: 1\n"),
+        Some("{'a\\u2028&p': 1}".to_string())
+    );
 }
