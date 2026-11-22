@@ -5074,6 +5074,21 @@ struct FlowParser<'a> {
     last_plain: Option<String>,
     last_anchor: bool,
     last_tag: Tag,
+    // The records of PORT18-1. The token record stands
+    // settled by every node reading at its end into
+    // node_token_break and copied by parse_value into
+    // last_token_break beside last_plain, the scan of a
+    // plain token leaving its own standing in
+    // last_scan_break for the plain reading to settle.
+    // The separation record stands reset at the head of
+    // every separator skip and carries whether that skip
+    // crossed a break and whether it crossed a comment,
+    // for the pair taking standing in front of it.
+    node_token_break: bool,
+    last_token_break: bool,
+    last_scan_break: bool,
+    sep_break: bool,
+    sep_comment: bool,
 }
 
 impl<'a> FlowParser<'a> {
@@ -5085,20 +5100,32 @@ impl<'a> FlowParser<'a> {
             last_plain: None,
             last_anchor: false,
             last_tag: Tag::None,
+            node_token_break: false,
+            last_token_break: false,
+            last_scan_break: false,
+            sep_break: false,
+            sep_comment: false,
         }
     }
 
     fn skip_separators(&mut self) {
+        self.sep_break = false;
+        self.sep_comment = false;
         loop {
             match self.chars.get(self.pos) {
-                Some(' ') | Some('\t') | Some('\n') | Some('\r') | Some('\u{2028}')
-                | Some('\u{2029}') => {
+                Some(' ') | Some('\t') | Some('\r') => {
+                    self.pos += 1;
+                }
+                Some('\n') | Some('\u{2028}') | Some('\u{2029}') => {
+                    self.sep_break = true;
                     self.pos += 1;
                 }
                 Some('#') => {
+                    self.sep_comment = true;
                     while let Some(ch) = self.chars.get(self.pos) {
                         self.pos += 1;
                         if matches!(*ch, '\n' | '\u{2028}' | '\u{2029}') {
+                            self.sep_break = true;
                             break;
                         }
                     }
@@ -5269,6 +5296,7 @@ impl<'a> FlowParser<'a> {
                 // node on the tag standing recorded behind it.
                 let built = finish_props(self.state, props.clone(), Built::empty_scalar())?;
                 self.last_plain = None;
+                self.last_token_break = false;
                 self.last_anchor = props.anchor.is_some();
                 self.last_tag = props.tag.clone();
                 return Some(built);
@@ -5278,6 +5306,7 @@ impl<'a> FlowParser<'a> {
         let built = self.parse_flow_node(depth, &tag)?;
         let built = finish_props(self.state, props.clone(), built)?;
         self.last_plain = built.plain_token.clone();
+        self.last_token_break = self.node_token_break;
         self.last_anchor = props.anchor.is_some();
         self.last_tag = props.tag.clone();
         Some(built)
@@ -5292,17 +5321,27 @@ impl<'a> FlowParser<'a> {
                     self.skip_separators();
                     if self.peek() == Some(']') {
                         self.pos += 1;
+                        self.node_token_break = false;
                         return Some(Built::list(items));
                     }
                     let item = self.parse_value(depth + 1)?;
                     let item_plain = self.last_plain.clone();
                     let item_anchor = self.last_anchor;
                     let item_tag = self.last_tag.clone();
+                    let item_token_break = self.last_token_break;
                     self.skip_separators();
                     let item = if self.peek() == Some(':') {
                         // A single pair mapping standing in a
                         // sequence, or a merge pair standing as
                         // one.
+                        // The crossing of PORT18-1, a break or
+                        // a comment in the separation span or
+                        // a break inside the entry as scanned
+                        // refusing the pair before its colon
+                        // stands consumed.
+                        if self.sep_break || self.sep_comment || item_token_break {
+                            return None;
+                        }
                         self.pos += 1;
                         self.skip_separators();
                         let value = match self.peek() {
@@ -5362,6 +5401,7 @@ impl<'a> FlowParser<'a> {
                         }
                         Some(']') => {
                             self.pos += 1;
+                            self.node_token_break = false;
                             return Some(Built::list(items));
                         }
                         _ => return None,
@@ -5415,6 +5455,7 @@ impl<'a> FlowParser<'a> {
                     }
                     let mut empty_explicit_key = false;
                     let mut explicit_pair = false;
+                    let mut key_break_inside = false;
                     if alias_key.is_none()
                         && self.peek() == Some('?')
                         && matches!(
@@ -5477,6 +5518,10 @@ impl<'a> FlowParser<'a> {
                             '"' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_double_quoted(&text)?;
+                                key_break_inside = text
+                                    .chars()
+                                    .take(end)
+                                    .any(|ch| matches!(ch, '\n' | '\u{2028}' | '\u{2029}'));
                                 if !explicit_pair
                                     && text
                                         .chars()
@@ -5500,6 +5545,10 @@ impl<'a> FlowParser<'a> {
                             '\'' => {
                                 let text: String = self.chars[self.pos..].iter().collect();
                                 let (value, end) = parse_flow_single_quoted(&text)?;
+                                key_break_inside = text
+                                    .chars()
+                                    .take(end)
+                                    .any(|ch| matches!(ch, '\n' | '\u{2028}' | '\u{2029}'));
                                 if !explicit_pair
                                     && text
                                         .chars()
@@ -5549,6 +5598,9 @@ impl<'a> FlowParser<'a> {
                                     // reads it.
                                     return None;
                                 }
+                                key_break_inside = scanned.contains('\n')
+                                    || scanned.contains('\u{2028}')
+                                    || scanned.contains('\u{2029}');
                                 match &key_tag {
                                     KeyTag::Convert(tag) => {
                                         (convert_tagged_scalar(tag, &folded)?, None)
@@ -5573,6 +5625,16 @@ impl<'a> FlowParser<'a> {
                     }
                     self.skip_separators();
                     let value = if self.peek() == Some(':') {
+                        // The crossing of PORT18-1 at the
+                        // mapping taking, the predicate
+                        // standing down where an explicit
+                        // pair stands, as the standing checks
+                        // at this seat stand down there.
+                        if !explicit_pair
+                            && (self.sep_break || self.sep_comment || key_break_inside)
+                        {
+                            return None;
+                        }
                         self.pos += 1;
                         self.skip_separators();
                         match self.peek() {
@@ -5615,12 +5677,17 @@ impl<'a> FlowParser<'a> {
                         _ => return None,
                     }
                 }
+                self.node_token_break = false;
                 flatten_mapping(self.state, merge_sources, explicit)
             }
             '"' => {
                 let text: String = self.chars[self.pos..].iter().collect();
                 let (value, end) = parse_flow_double_quoted(&text)?;
                 self.pos += end;
+                self.node_token_break = text
+                    .chars()
+                    .take(end)
+                    .any(|ch| matches!(ch, '\n' | '\u{2028}' | '\u{2029}'));
                 if tag.is_constructor() {
                     let converted = convert_tagged_scalar(tag, &value)?;
                     return Some(Built::converted(converted));
@@ -5631,6 +5698,10 @@ impl<'a> FlowParser<'a> {
                 let text: String = self.chars[self.pos..].iter().collect();
                 let (value, end) = parse_flow_single_quoted(&text)?;
                 self.pos += end;
+                self.node_token_break = text
+                    .chars()
+                    .take(end)
+                    .any(|ch| matches!(ch, '\n' | '\u{2028}' | '\u{2029}'));
                 if tag.is_constructor() {
                     let converted = convert_tagged_scalar(tag, &value)?;
                     return Some(Built::converted(converted));
@@ -5648,6 +5719,7 @@ impl<'a> FlowParser<'a> {
                 }
                 let name: String = self.chars[start..end].iter().collect();
                 self.pos = end;
+                self.node_token_break = false;
                 self.state.resolve_alias(&name)
             }
             ',' | ']' | '}' | ':' | '|' | '>' | '%' | '@' | '`' => None,
@@ -5711,6 +5783,8 @@ impl<'a> FlowParser<'a> {
         }
         let raw: String = self.chars[start..index].iter().collect();
         self.pos = index;
+        self.last_scan_break =
+            raw.contains('\n') || raw.contains('\u{2028}') || raw.contains('\u{2029}');
         // A tab inside a flow plain scalar refuses the
         // reading, as it does in block position.
         if raw.contains('\t') {
@@ -5725,6 +5799,7 @@ impl<'a> FlowParser<'a> {
 
     fn parse_flow_plain(&mut self, tag: &Tag) -> Option<Built> {
         let folded = self.scan_plain_token()?;
+        self.node_token_break = self.last_scan_break;
         if tag.is_constructor() {
             let converted = convert_tagged_scalar(tag, &folded)?;
             return Some(Built::converted(converted));
