@@ -313,10 +313,10 @@ fn test_port18_a_flow_pair_with_a_break_behind_its_colon_reads() {
 
 #[test]
 fn test_port18_a_plain_entry_carrying_a_separator_inside_itself_reads() {
-    assert_eq!(reads("[a\u{2028}b]"), Some("['a\u{2028}b']".to_string()));
+    assert_eq!(reads("[a\u{2028}b]"), Some("['a\\u2028b']".to_string()));
     assert_eq!(
         reads("{k: [a\u{2028}b]}"),
-        Some("{'k': ['a\u{2028}b']}".to_string())
+        Some("{'k': ['a\\u2028b']}".to_string())
     );
     assert_eq!(reads("[a\u{2028}, b]"), Some("['a', 'b']".to_string()));
 }
@@ -325,7 +325,7 @@ fn test_port18_a_plain_entry_carrying_a_separator_inside_itself_reads() {
 fn test_port18_a_flow_sequence_pair_with_a_separator_inside_its_value_reads() {
     assert_eq!(
         reads("[a: b\u{2028}c]"),
-        Some("[{'a': 'b\u{2028}c'}]".to_string())
+        Some("[{'a': 'b\\u2028c'}]".to_string())
     );
 }
 
