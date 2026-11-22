@@ -31,6 +31,12 @@ fn test_port20_a_second_tag_refuses() {
 }
 
 #[test]
+fn test_port20_a_second_string_tag_over_a_word_at_a_value_rest_refuses() {
+    assert_eq!(reads("k: !!str word\n"), Some("{'k': 'word'}".to_string()));
+    assert_eq!(reads("k: !!str !!str word\n"), None);
+}
+
+#[test]
 fn test_port20_an_empty_anchor_name_refuses() {
     assert_eq!(reads("& k: v\n"), None);
 }
@@ -41,8 +47,20 @@ fn test_port20_an_anchor_ending_at_a_comma_refuses() {
 }
 
 #[test]
+fn test_port20_an_anchor_ending_at_a_comma_in_front_of_an_explicit_key_refuses() {
+    assert_eq!(reads("? &a k\n: v\n"), Some("{'k': 'v'}".to_string()));
+    assert_eq!(reads("? &a, k\n: v\n"), None);
+}
+
+#[test]
 fn test_port20_an_anchor_ending_at_a_colon_refuses() {
     assert_eq!(reads("&a: k: v\n"), None);
+}
+
+#[test]
+fn test_port20_an_anchor_ending_at_a_colon_in_front_of_an_explicit_key_refuses() {
+    assert_eq!(reads("? &a k\n: v\n"), Some("{'k': 'v'}".to_string()));
+    assert_eq!(reads("? &a: k\n: v\n"), None);
 }
 
 #[test]
