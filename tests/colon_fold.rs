@@ -202,3 +202,143 @@ fn test_a_flow_mapping_behind_a_comment_mark_behind_a_property_folds_as_text_in_
         Some("{'a\\u2028&p': 1}".to_string())
     );
 }
+
+// PORT18-1, the pair refusal at the two pair takings of
+// the flow reading.
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_line_separator_refuses() {
+    assert_eq!(reads("[a\u{2028}: b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_paragraph_separator_refuses() {
+    assert_eq!(reads("[a\u{2029}: b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_line_feed_refuses() {
+    assert_eq!(reads("[a\n: b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_with_a_separator_inside_its_key_refuses() {
+    assert_eq!(reads("[a\u{2028}b: c]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_with_a_line_feed_inside_its_key_refuses() {
+    assert_eq!(reads("[a\nb: c]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_comment_ending_at_a_line_feed_refuses() {
+    assert_eq!(reads("[a # c\n: b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_comment_ending_at_a_line_separator_refuses() {
+    assert_eq!(reads("[a # c\u{2028}: b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_with_a_quoted_key_spanning_a_separator_refuses() {
+    assert_eq!(reads("['a'\u{2028}: b]"), None);
+    assert_eq!(reads("[\"a\"\u{2028}: b]"), None);
+    assert_eq!(reads("[\"a\"\n: b]"), None);
+    assert_eq!(reads("['a'\n: b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_with_a_break_inside_its_quoted_key_refuses() {
+    assert_eq!(reads("['a\n': b]"), None);
+    assert_eq!(reads("[\"a\n\": b]"), None);
+    assert_eq!(reads("['a\u{2028}': b]"), None);
+    assert_eq!(reads("[\"a\u{2028}\": b]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_separator_standing_second_refuses() {
+    assert_eq!(reads("[x, a\u{2028}: b]"), None);
+    assert_eq!(reads("[[a\u{2028}: b]]"), None);
+    assert_eq!(reads("{k: [a\u{2028}: b]}"), None);
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_spanning_a_separator_with_an_empty_value_refuses() {
+    assert_eq!(reads("[a\u{2028}:]"), None);
+}
+
+#[test]
+fn test_port18_a_flow_mapping_pair_spanning_a_line_feed_refuses() {
+    assert_eq!(reads("{a\n: b}"), None);
+}
+
+#[test]
+fn test_port18_a_flow_mapping_pair_with_a_line_feed_inside_its_key_refuses() {
+    assert_eq!(reads("{a\nb: c}"), None);
+}
+
+#[test]
+fn test_port18_a_flow_mapping_pair_spanning_a_comment_refuses() {
+    assert_eq!(reads("{a # c\n: b}"), None);
+    assert_eq!(reads("{a # c\u{2028}: b}"), None);
+}
+
+#[test]
+fn test_port18_a_flow_mapping_pair_with_a_quoted_key_spanning_a_line_feed_refuses() {
+    assert_eq!(reads("{\"a\"\n: b}"), None);
+    assert_eq!(reads("{'a'\n: b}"), None);
+}
+
+#[test]
+fn test_port18_a_flow_mapping_pair_with_a_collection_key_spanning_a_line_feed_refuses() {
+    assert_eq!(reads("{[a]\n: b}"), None);
+}
+
+// PORT18-2, the borders of the crossing standing unmoved.
+
+#[test]
+fn test_port18_a_flow_sequence_pair_standing_whole_on_one_line_reads() {
+    assert_eq!(reads("[a: b]"), Some("[{'a': 'b'}]".to_string()));
+    assert_eq!(reads("[a : b]"), Some("[{'a': 'b'}]".to_string()));
+}
+
+#[test]
+fn test_port18_a_flow_pair_with_a_break_behind_its_colon_reads() {
+    assert_eq!(reads("[a:\nb]"), Some("[{'a': 'b'}]".to_string()));
+    assert_eq!(reads("{a:\nb}"), Some("{'a': 'b'}".to_string()));
+    assert_eq!(reads("[a: # c\nb]"), Some("[{'a': 'b'}]".to_string()));
+}
+
+#[test]
+fn test_port18_a_plain_entry_carrying_a_separator_inside_itself_reads() {
+    assert_eq!(reads("[a\u{2028}b]"), Some("['a\\u2028b']".to_string()));
+    assert_eq!(
+        reads("{k: [a\u{2028}b]}"),
+        Some("{'k': ['a\\u2028b']}".to_string())
+    );
+    assert_eq!(reads("[a\u{2028}, b]"), Some("['a', 'b']".to_string()));
+}
+
+#[test]
+fn test_port18_a_flow_sequence_pair_with_a_separator_inside_its_value_reads() {
+    assert_eq!(
+        reads("[a: b\u{2028}c]"),
+        Some("[{'a': 'b\\u2028c'}]".to_string())
+    );
+}
+
+#[test]
+fn test_port18_a_comment_standing_in_front_of_a_flow_mapping_key_reads() {
+    assert_eq!(
+        reads("{a: 1, # c\u{2028}b: 2}"),
+        Some("{'a': 1, 'b': 2}".to_string())
+    );
+}
+
+#[test]
+fn test_port18_a_flow_mapping_pair_spanning_a_separator_still_refuses() {
+    assert_eq!(reads("{a\u{2028}: b}"), None);
+    assert_eq!(reads("{a\u{2028}b: c}"), None);
+}
