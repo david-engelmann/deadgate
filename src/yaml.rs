@@ -1247,6 +1247,18 @@ fn expand_merge_into(
             out.extend(pairs);
             Some(())
         }
+        YamlValue::Set(members) => {
+            // A set standing as a source merges as its
+            // members standing as keys against null values,
+            // the standing PORT25-1 states, the set carrying
+            // its members as keys alone from the tag
+            // application seat onward.
+            let cost = 1 + source.tally;
+            state.charge(cost)?;
+            *tally += cost;
+            out.extend(members.into_iter().map(|member| (member, YamlValue::Null)));
+            Some(())
+        }
         YamlValue::List(items) => {
             let tallies = source.items?;
             if tallies.len() != items.len() {
@@ -1260,6 +1272,17 @@ fn expand_merge_into(
                         state.charge(cost)?;
                         *tally += cost;
                         sources.push(pairs);
+                    }
+                    YamlValue::Set(members) => {
+                        let cost = 1 + item_tally;
+                        state.charge(cost)?;
+                        *tally += cost;
+                        sources.push(
+                            members
+                                .into_iter()
+                                .map(|member| (member, YamlValue::Null))
+                                .collect(),
+                        );
                     }
                     _ => return None,
                 }
