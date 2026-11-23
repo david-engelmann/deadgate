@@ -249,10 +249,60 @@ fn test_port19_a_tab_standing_at_a_property_border_refuses_at_the_door() {
     assert_eq!(reads("[x,\t&a y]"), None);
 }
 
-// PORT19-15, the pair taking break border at the anchored empty entry.
+// PORT25, the break border pair at the anchored and tagged
+// empty entry. The five pins of this slice stand here in the
+// place of the retired PORT19-15 pin, its two cells standing
+// as cells of the first pin in their moved standing.
+
+// PORT25-1, the break and the comment inside the taking.
 
 #[test]
-fn test_port19_an_anchored_empty_pair_key_with_a_break_behind_its_anchor_reads() {
-    assert_eq!(reads("[&a\u{2028}: 1]"), Some("[{None: 1}]".to_string()));
-    assert_eq!(reads("[&a\n: 1]"), Some("[{None: 1}]".to_string()));
+fn test_port25_an_anchored_empty_pair_key_with_a_break_behind_its_anchor_refuses() {
+    assert_eq!(reads("[&a\n: 1]"), None);
+    assert_eq!(reads("[&a\u{2028}: 1]"), None);
+    assert_eq!(reads("[&a\u{2029}: 1]"), None);
+    assert_eq!(reads("[&a\r: 1]"), None);
+    assert_eq!(reads("[&a\n : 1]"), None);
+    assert_eq!(reads("[&a\n\n: 1]"), None);
+}
+
+#[test]
+fn test_port25_an_anchored_empty_pair_key_with_a_comment_in_its_taking_refuses() {
+    assert_eq!(reads("[&a #c\n: 1]"), None);
+    assert_eq!(reads("[&a\n#c\n: 1]"), None);
+}
+
+// PORT25-2, the tag standing in the taking.
+
+#[test]
+fn test_port25_a_tagged_empty_pair_key_with_a_break_behind_its_tag_refuses() {
+    assert_eq!(reads("[!!str\n: 1]"), None);
+    assert_eq!(reads("[!!str\u{2028}: 1]"), None);
+    assert_eq!(reads("[&a !!str\n: 1]"), None);
+    assert_eq!(reads("[!!str &a\n: 1]"), None);
+}
+
+// PORT25-3, the refusal standing at its seats.
+
+#[test]
+fn test_port25_the_empty_pair_key_refusal_stands_at_its_seats() {
+    assert_eq!(reads("[x, &a\n: 1]"), None);
+    assert_eq!(reads("[[&a\n: 1]]"), None);
+    assert_eq!(reads("{k: [&a\n: 1]}"), None);
+    assert_eq!(reads("[k: [&a\n: 1]]"), None);
+    assert_eq!(reads("[&a\n: 1, y]"), None);
+    assert_eq!(reads("[&a\n:]"), None);
+}
+
+// PORT25-4, the borders of the crossing standing unmoved.
+
+#[test]
+fn test_port25_the_pair_borders_stand_unmoved() {
+    assert_eq!(reads("[\n&a: 1]"), Some("[{None: 1}]".to_string()));
+    assert_eq!(reads("[#c\n&a: 1]"), Some("[{None: 1}]".to_string()));
+    assert_eq!(reads("[&a : 1]"), Some("[{None: 1}]".to_string()));
+    assert_eq!(reads("[&a, x]"), Some("[None, 'x']".to_string()));
+    assert_eq!(reads("[&a]"), Some("[None]".to_string()));
+    assert_eq!(reads("{&a\n: 1}"), None);
+    assert_eq!(reads("{[&a]: 1}"), None);
 }

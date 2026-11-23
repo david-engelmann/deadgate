@@ -80,6 +80,10 @@ fn test_port24_the_duplicate_and_neighbour_standings_of_the_anchored_empty_expli
         Some("[{'? &a': 1}, {'? &a': 2}]".to_string())
     );
     assert_eq!(reads("[? &a\n: 1, ? &b\n: 2]"), None);
-    assert_eq!(reads("[&a\n: 1]"), Some("[{None: 1}]".to_string()));
+    // The no mark neighbour cell stands moved by the Round 24
+    // PORT25 cure section, the pair refusing now where
+    // the taking crossed the break, as the correction recorded
+    // against PORT24-6 in the PORT25 cure section states.
+    assert_eq!(reads("[&a\n: 1]"), None);
     assert_eq!(reads("[&a : 1]"), Some("[{None: 1}]".to_string()));
 }
