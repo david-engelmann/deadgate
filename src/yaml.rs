@@ -5089,6 +5089,13 @@ struct FlowParser<'a> {
     last_scan_break: bool,
     sep_break: bool,
     sep_comment: bool,
+    // The crossings of the property taking standing in
+    // front of the node parse_value reads, accumulated
+    // over the skips inside take_properties, from which
+    // the empty node arm settles the token record of
+    // PORT25-1.
+    taking_break: bool,
+    taking_comment: bool,
 }
 
 impl<'a> FlowParser<'a> {
@@ -5105,6 +5112,8 @@ impl<'a> FlowParser<'a> {
             last_scan_break: false,
             sep_break: false,
             sep_comment: false,
+            taking_break: false,
+            taking_comment: false,
         }
     }
 
@@ -5143,6 +5152,8 @@ impl<'a> FlowParser<'a> {
     /// at most one anchor and at most one tag in either order.
     fn take_properties(&mut self) -> Option<Props> {
         let mut props = Props::new();
+        self.taking_break = false;
+        self.taking_comment = false;
         loop {
             match self.peek()? {
                 '&' => {
@@ -5177,6 +5188,8 @@ impl<'a> FlowParser<'a> {
                 _ => break,
             }
             self.skip_separators();
+            self.taking_break = self.taking_break || self.sep_break;
+            self.taking_comment = self.taking_comment || self.sep_comment;
             if !matches!(self.peek(), Some('&') | Some('!')) {
                 break;
             }
@@ -5294,9 +5307,14 @@ impl<'a> FlowParser<'a> {
                 // it standing the same way, the pair branch
                 // taking the colon up itself and judging the
                 // node on the tag standing recorded behind it.
+                // The token break record stands settled from
+                // the break or the comment the property taking
+                // itself crossed, so a taking that crossed one
+                // leaves the record standing for the pair
+                // branch to read at the colon.
                 let built = finish_props(self.state, props.clone(), Built::empty_scalar())?;
                 self.last_plain = None;
-                self.last_token_break = false;
+                self.last_token_break = self.taking_break || self.taking_comment;
                 self.last_anchor = props.anchor.is_some();
                 self.last_tag = props.tag.clone();
                 return Some(built);
