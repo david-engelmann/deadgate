@@ -7,11 +7,24 @@ description = "Reconcile required status checks against what CI actually ran"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/david-engelmann/deadgate"
-homepage = "https://github.com/david-engelmann/deadgate"
+homepage = "https://david-engelmann.github.io/deadgate/"
 documentation = "https://docs.rs/deadgate"
 keywords = ["ci", "github-actions", "branch-protection", "audit", "verification"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = ["tests/**", "tools/**", "CONTRACT.md", "AGENTS.md", ".github/**", "deny.toml", "install.sh"]
+exclude = [
+    "tests/**",
+    "tools/**",
+    "book/**",
+    "docs/media/**",
+    "CONTRACT.md",
+    "AGENTS.md",
+    "CITATION.cff",
+    ".editorconfig",
+    ".gitattributes",
+    ".github/**",
+    "deny.toml",
+    "install.sh",
+]
 
 [lib]
 name = "deadgate"
@@ -20,3 +33,11 @@ path = "src/lib.rs"
 [[bin]]
 name = "deadgate"
 path = "src/main.rs"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-v{ version }-{ target }.{ archive-format }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"

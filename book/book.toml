@@ -1,0 +1,15 @@
+[book]
+title = "deadgate Documentation"
+authors = ["David Engelmann"]
+description = "Reconcile required status checks against what CI actually ran"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "build"
+create-missing = false
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/david-engelmann/deadgate"
