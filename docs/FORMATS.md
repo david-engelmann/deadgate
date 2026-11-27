@@ -14,7 +14,7 @@ Top-level keys are emitted in fixed insertion order (`format`, `branch`, `window
 
 - `format` Always `"deadgate-report/1"`.
 - `branch` Target branch name (default `"main"`).
-- `window` Object `{"first": "<YYYY-MM-DD>", "last": "<YYYY-MM-DD>"}` spanning observed completed job dates, or `null` when history carries zero completed jobs.
+- `window` Object `{"first": "<YYYY-MM-DD>", "last": "<YYYY-MM-DD>"}` spanning the earliest and latest valid ISO 8601 dates across `started_at` and `completed_at` on every history record regardless of job status, or `null` when history carries zero valid timestamps.
 - `checks` Array of reconciled required check objects (`context`, `status`, `producers`, `last_run_date`, `notes`), where `producers` is an array of `{"workflow", "file", "job", "job_name"}` objects naming every workflow job capable of producing `context` on `branch`.
 - `summary` Object `{"required", "alive", "paper"}` counting total deduplicated required checks, `alive` checks, and paper checks (`skipped_only` + `never_run` + `no_producer`).
 

@@ -21,7 +21,7 @@ GitHub Actions workflows routinely rely on YAML 1.1 features including literal a
 
 ### 3. Trigger, Filter, and Matrix Producer Expansion (`src/ingest.rs`)
 
-For each `.yml` and `.yaml` workflow file in filename order, Deadgate evaluates `on` triggers (`push` and `pull_request` branch filters under GitHub's exact ordered positive/negative pattern semantics, plus `paths` and `paths-ignore` filters) and expands `strategy.matrix` dimensions alongside `include` and `exclude` rules to compute the exact job contexts (`<job>` and `<workflow> / <job>`) producible for `--branch`.
+For each `.yml` and `.yaml` workflow file in filename order, Deadgate evaluates `on` triggers (`push` and `pull_request` branch filters under GitHub's exact ordered positive/negative pattern semantics, plus `paths` and `paths-ignore` filters) and expands static YAML `strategy.matrix` dimensions alongside `include` and `exclude` rules to compute the job contexts (`<job>` and `<workflow> / <job>`) producible for `--branch` (when `strategy.matrix` is a runtime `${{ ... }}` expression, `job_forms` falls back to the unexpanded job name because expressions cannot be evaluated statically).
 
 ### 4. Four-Verdict Reconciler and Deterministic Renderers (`src/reconcile.rs`, `src/report.rs`)
 

@@ -48,27 +48,27 @@ A required check can enforce nothing for weeks after a rename while the merge bu
 
 ## Install
 
-Install a prebuilt binary on Linux or macOS (`x86_64` and `aarch64`) with the checksum-verifying installer script.
+Install from source with Cargo (Rust 1.80 or newer) or via `cargo-binstall` and the checksum-verifying installer script on Linux and macOS (`x86_64` and `aarch64`) for releases carrying prebuilt archives (`v0.24.0` once release archives are attached and `v0.25.0` onward).
+
+```sh
+cargo install --git https://github.com/david-engelmann/deadgate --locked
+```
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/david-engelmann/deadgate/main/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-```
-
-Or install via `cargo-binstall` or from source with Cargo (Rust 1.80 or newer).
-
-```sh
 cargo binstall --git https://github.com/david-engelmann/deadgate deadgate
-cargo install --git https://github.com/david-engelmann/deadgate --locked
 ```
 
 From a local checkout, `cargo build --release --locked` leaves the binary at `target/release/deadgate` (Windows `.zip` archives ship on the [Releases](https://github.com/david-engelmann/deadgate/releases) page).
 
 ## Quickstart
 
-Run `deadgate` over the synthetic exports under `examples/` to emit either the Markdown table (`examples/report.md`) or the default `deadgate-report/1` JSON document (`examples/report.json`).
+Clone this repository to run `deadgate` over the synthetic exports under `examples/` and emit either the Markdown table (`examples/report.md`) or the default `deadgate-report/1` JSON document (`examples/report.json`).
 
 ```sh
+git clone https://github.com/david-engelmann/deadgate.git
+cd deadgate
 deadgate \
   --protection examples/protection.json \
   --workflows examples/workflows \
@@ -157,7 +157,7 @@ Measured with the `--release` binary on synthetic workflow and history snapshots
 | [finaltree](https://github.com/david-engelmann/finaltree) | What tree did CI actually evaluate? | Commit and tree lineage across merge queues |
 | [blindgate](https://github.com/david-engelmann/blindgate) | What files did the gate actually read? | Linux `strace` descriptor and path reconstruction |
 | [ostensible](https://github.com/david-engelmann/ostensible) | Can the test actually fail? | Static tautology scan and 4-family `pytest` mutants |
-| [canaryfield](https://github.com/david-engelmann/canaryfield) | Does the harness catch planted defects? | 200 seeded Python defect classes across real gates |
+| [canaryfield](https://github.com/david-engelmann/canaryfield) | Does the harness catch planted defects? | 200+ seeded Python defect classes across real gates |
 | [greenharvest](https://github.com/david-engelmann/greenharvest) | Which tests earn their CI runtime? | Marginal defect-catch value per second of execution |
 
 ## Documentation

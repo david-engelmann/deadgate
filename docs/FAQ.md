@@ -10,7 +10,7 @@ Finding paper checks is a successful audit report, not a tool usage error (exit 
 
 ## How does `no_producer` still know `last_run_date` (`2026-09-20`) after a job rename?
 
-When zero current workflow jobs can produce a required context for `--branch`, Deadgate scans the execution history window for historical runs matching that context name so operators can see the exact date the check stopped running after a rename.
+When zero current workflow jobs can produce a required context for `--branch`, Deadgate scans the supplied execution history window for completed records loosely matching that context name, surfacing the most recent historical date (which may come from the workflow before a job rename or another workflow that emitted the same context name).
 
 ## Does Deadgate support YAML anchors, merge keys (`<<`), and multi-line block scalars in workflows?
 
