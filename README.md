@@ -2,9 +2,89 @@
 
 It reconciles the required status checks in branch protection, the jobs CI actually executes, and the trigger conditions inside each workflow, and prints the required check your team believes guards main next to the last date it actually ran.
 
+[![CI](https://github.com/david-engelmann/deadgate/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/deadgate/actions/workflows/ci.yml)
+
+```markdown
+# deadgate report
+
+Branch main. History window 2026-09-20 to 2026-10-15.
+
+| Required check | Producing job | Status | Last ran |
+| --- | --- | --- | --- |
+| ci / build | ci / build | alive | 2026-10-15 |
+| ci / lint | ci / lint | skipped only (job carries an if condition) | never |
+| ci / package | none | no producer | 2026-09-20 |
+| tests / test | tests / test | never ran (path filtered trigger) | never |
+```
+
 ## What this is
 
 A required check can enforce nothing for weeks after a rename while the merge button stays green the whole time, and skipped jobs reporting success is a second documented variant of the same break. No CI platform self-tests that a bad pull request still gets refused. Deadgate compares the three sources of truth, protection settings, workflow definitions, and execution history, and names the checks that exist only on paper. The boundary with its siblings is one sentence. Deadgate asks whether it ran, finaltree asks what it ran on, blindgate asks what it read.
+
+## Install
+
+Build and install from source with Cargo (works today on every tagged revision).
+
+```sh
+cargo install --git https://github.com/david-engelmann/deadgate --locked
+```
+
+For releases tagged from `v0.25.0` onward, download a prebuilt binary for Linux or macOS with the checksum-verifying installer script.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/david-engelmann/deadgate/main/install.sh | sh
+```
+
+From a local checkout, `cargo build --release --locked` leaves the binary at `target/release/deadgate` (on Windows, release `.zip` archives ship on the GitHub Releases page from `v0.25.0` onward).
+
+## Quickstart
+
+Run `deadgate` over the synthetic exports under `examples/` to emit either the Markdown table (`examples/report.md`) or the default `deadgate-report/1` JSON document (`examples/report.json`).
+
+```sh
+deadgate \
+  --protection examples/protection.json \
+  --workflows examples/workflows \
+  --history examples/history.json \
+  --markdown
+```
+
+Omit `--markdown` to emit the deterministic `deadgate-report/1` JSON report, and pass `--branch <name>` when auditing a branch other than `main`.
+
+## Exporting Inputs from GitHub
+
+Deadgate makes zero network calls and reads only local files. Export branch protection and recent job history from a GitHub repository with `gh` and `jq`, then hand the files to `deadgate`.
+
+```sh
+(
+  set -eu
+  REPO="owner/repo"
+  BRANCH="main"
+
+  gh api "repos/$REPO/branches/$BRANCH/protection" > protection.json
+
+  gh api "repos/$REPO/actions/runs?branch=$BRANCH&per_page=30" \
+    --jq '.workflow_runs[] | "\(.id)\t\(.name)"' > runs.tsv
+
+  cp /dev/null jobs.jsonl
+  while IFS="$(printf '\t')" read -r RUN_ID WF_NAME; do
+    gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" > run-jobs.json
+    jq -c --arg wf "$WF_NAME" '.jobs[] | .workflow_name = (.workflow_name // $wf)' run-jobs.json >> jobs.jsonl
+  done < runs.tsv
+  rm -f runs.tsv run-jobs.json
+  jq -s '{jobs: .}' jobs.jsonl > history.json
+  rm -f jobs.jsonl
+
+  deadgate \
+    --protection protection.json \
+    --workflows .github/workflows \
+    --history history.json \
+    --branch "$BRANCH" \
+    --markdown
+)
+```
+
+Read [docs/GUIDE.md](docs/GUIDE.md) for the complete operator manual, input and output JSON schemas, trigger and matrix reconciliation rules, and a scheduled GitHub Actions workflow.
 
 ## Status
 
