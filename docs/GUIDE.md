@@ -20,7 +20,7 @@ For releases tagged from `v0.25.0` onward on Linux (`x86_64`, `aarch64`) and mac
 curl -fsSL https://raw.githubusercontent.com/david-engelmann/deadgate/main/install.sh | sh
 ```
 
-Pin a specific release tag by setting `DEADGATE_VERSION` (for example `DEADGATE_VERSION=v0.25.0`). On Windows (`x86_64-pc-windows-msvc`), download the `.zip` archive and its `.sha256` file from the GitHub Releases page from `v0.25.0` onward.
+Pin a specific release tag by setting `DEADGATE_VERSION` (for example `DEADGATE_VERSION=v0.25.0`). Because `install.sh` does not edit shell profile files, ensure `$HOME/.local/bin` (or your custom `$DEADGATE_INSTALL_DIR`) stands on `PATH` in your shell (`export PATH="$HOME/.local/bin:$PATH"`). On Windows (`x86_64-pc-windows-msvc`), download the `.zip` archive and its `.sha256` file from the GitHub Releases page from `v0.25.0` onward.
 
 ## Offline Architecture and Exporting GitHub Inputs
 

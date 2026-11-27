@@ -33,6 +33,7 @@ For releases tagged from `v0.25.0` onward, download a prebuilt binary for Linux 
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/david-engelmann/deadgate/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 From a local checkout, `cargo build --release --locked` leaves the binary at `target/release/deadgate` (on Windows, release `.zip` archives ship on the GitHub Releases page from `v0.25.0` onward).
