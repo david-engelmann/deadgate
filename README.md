@@ -1,8 +1,80 @@
-# deadgate
+<p align="center">
+  <a href="https://github.com/david-engelmann/deadgate">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/deadgate-lockup-dark.svg">
+      <img src="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/deadgate-lockup-light.svg" alt="deadgate" height="56">
+    </picture>
+  </a>
+</p>
 
-It reconciles the required status checks in branch protection, the jobs CI actually executes, and the trigger conditions inside each workflow, and prints the required check your team believes guards main next to the last date it actually ran.
+<h3 align="center">Reconcile required branch-protection checks against workflow definitions and actual CI run history.</h3>
 
-[![CI](https://github.com/david-engelmann/deadgate/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/deadgate/actions/workflows/ci.yml)
+<p align="center">A required status check can enforce nothing for weeks after a job rename, a skipped <code>if</code> condition, or a path-filtered trigger while the merge button stays green. <code>deadgate</code> compares local exports of branch protection, <code>.github/workflows</code>, and job history with zero network calls, naming every check that exists only on paper alongside the last date it actually ran.</p>
+
+<p align="center">
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/docs/GUIDE.md"><b>Operator Guide</b></a> |
+  <a href="https://david-engelmann.github.io/deadgate/">Published Docs</a> |
+  <a href="https://github.com/david-engelmann/deadgate/tree/main/examples">Examples</a> |
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/docs/ARCHITECTURE.md">Architecture</a> |
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/docs/FORMATS.md">Wire Formats</a> |
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/docs/COMPARISON.md">Comparison</a> |
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/docs/FAQ.md">FAQ</a> |
+  <a href="https://github.com/david-engelmann/deadgate/releases">Releases</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/david-engelmann/deadgate/actions/workflows/ci.yml"><img src="https://github.com/david-engelmann/deadgate/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://david-engelmann.github.io/deadgate/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-0284c7" alt="Published docs"></a>
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/Cargo.toml"><img src="https://img.shields.io/badge/MSRV-1.80-informational" alt="MSRV 1.80"></a>
+  <a href="https://github.com/david-engelmann/deadgate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License"></a>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/money-shot.gif" alt="deadgate terminal showcase over synthetic examples" width="900">
+</p>
+
+<p align="center"><sub>Every terminal line above comes from running the deadgate release binary against examples/.</sub></p>
+
+## What this is
+
+A required check can enforce nothing for weeks after a rename while the merge button stays green the whole time, and skipped jobs reporting success is a second documented variant of the same break. No CI platform self-tests that a bad pull request still gets refused. Deadgate compares the three sources of truth, protection settings, workflow definitions, and execution history, and names the checks that exist only on paper. The boundary with its siblings is one sentence. Deadgate asks whether it ran, finaltree asks what it ran on, blindgate asks what it read.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/how-it-works-dark.svg">
+    <img src="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/how-it-works-light.svg" alt="How deadgate reconciles branch protection against CI history" width="900">
+  </picture>
+</p>
+
+## Install
+
+Install from source with Cargo (Rust 1.80 or newer) or via `cargo-binstall` and the checksum-verifying installer script on Linux and macOS (`x86_64` and `aarch64`) for releases carrying prebuilt archives (`v0.24.0` once release archives are attached and `v0.25.0` onward).
+
+```sh
+cargo install --git https://github.com/david-engelmann/deadgate --locked
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/david-engelmann/deadgate/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+cargo binstall --git https://github.com/david-engelmann/deadgate deadgate
+```
+
+From a local checkout, `cargo build --release --locked` leaves the binary at `target/release/deadgate` (Windows `.zip` archives ship on the [Releases](https://github.com/david-engelmann/deadgate/releases) page).
+
+## Quickstart
+
+Clone this repository to run `deadgate` over the synthetic exports under `examples/` and emit either the Markdown table (`examples/report.md`) or the default `deadgate-report/1` JSON document (`examples/report.json`).
+
+```sh
+git clone https://github.com/david-engelmann/deadgate.git
+cd deadgate
+deadgate \
+  --protection examples/protection.json \
+  --workflows examples/workflows \
+  --history examples/history.json \
+  --markdown
+```
 
 ```markdown
 # deadgate report
@@ -17,44 +89,11 @@ Branch main. History window 2026-09-20 to 2026-10-15.
 | tests / test | tests / test | never ran (path filtered trigger) | never |
 ```
 
-## What this is
-
-A required check can enforce nothing for weeks after a rename while the merge button stays green the whole time, and skipped jobs reporting success is a second documented variant of the same break. No CI platform self-tests that a bad pull request still gets refused. Deadgate compares the three sources of truth, protection settings, workflow definitions, and execution history, and names the checks that exist only on paper. The boundary with its siblings is one sentence. Deadgate asks whether it ran, finaltree asks what it ran on, blindgate asks what it read.
-
-## Install
-
-Build and install from source with Cargo (works today on every tagged revision).
-
-```sh
-cargo install --git https://github.com/david-engelmann/deadgate --locked
-```
-
-For releases tagged from `v0.25.0` onward, download a prebuilt binary for Linux or macOS with the checksum-verifying installer script.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/david-engelmann/deadgate/main/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-From a local checkout, `cargo build --release --locked` leaves the binary at `target/release/deadgate` (on Windows, release `.zip` archives ship on the GitHub Releases page from `v0.25.0` onward).
-
-## Quickstart
-
-Run `deadgate` over the synthetic exports under `examples/` to emit either the Markdown table (`examples/report.md`) or the default `deadgate-report/1` JSON document (`examples/report.json`).
-
-```sh
-deadgate \
-  --protection examples/protection.json \
-  --workflows examples/workflows \
-  --history examples/history.json \
-  --markdown
-```
-
 Omit `--markdown` to emit the deterministic `deadgate-report/1` JSON report, and pass `--branch <name>` when auditing a branch other than `main`.
 
 ## Exporting Inputs from GitHub
 
-Deadgate makes zero network calls and reads only local files. Export branch protection and recent job history from a GitHub repository with `gh` and `jq`, then hand the files to `deadgate`.
+Deadgate makes zero network calls and reads only local files. Export branch protection and paginated job history from a GitHub repository inside an isolated subshell with `gh` and `jq`, then hand the files to `deadgate`.
 
 ```sh
 (
@@ -85,7 +124,52 @@ Deadgate makes zero network calls and reads only local files. Export branch prot
 )
 ```
 
-Read [docs/GUIDE.md](docs/GUIDE.md) for the complete operator manual, input and output JSON schemas, trigger and matrix reconciliation rules, and a scheduled GitHub Actions workflow.
+## Benchmarks and Verification
+
+Run the full local gate from a clean checkout.
+
+```sh
+cargo test --locked
+cargo fmt --check
+cargo clippy --offline --all-targets
+cargo package --locked
+```
+
+Measured with the `--release` binary on synthetic workflow and history snapshots.
+
+| Workload | Input shape | Mean elapsed |
+| --- | --- | --- |
+| `examples/` reconciliation | `4` required checks, `2` workflows, `2` job records | `13.9 ms` |
+| Enterprise monorepo snapshot | `40` workflow YAML files, `160` required checks, `1,920` job history records | `126.1 ms` |
+
+## The Gate Truth Suite
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/gate-truth-arc-dark.svg">
+    <img src="https://raw.githubusercontent.com/david-engelmann/deadgate/main/docs/media/gate-truth-arc-light.svg" alt="Gate Truth verification suite architecture" width="900">
+  </picture>
+</p>
+
+| Tool | Question answered | Primary evidence |
+| --- | --- | --- |
+| [deadgate](https://github.com/david-engelmann/deadgate) | Did the required check actually run? | Branch protection, workflow YAML, and job history |
+| [finaltree](https://github.com/david-engelmann/finaltree) | What tree did CI actually evaluate? | Commit and tree lineage across merge queues |
+| [blindgate](https://github.com/david-engelmann/blindgate) | What files did the gate actually read? | Linux `strace` descriptor and path reconstruction |
+| [ostensible](https://github.com/david-engelmann/ostensible) | Can the test actually fail? | Static tautology scan and 4-family `pytest` mutants |
+| [canaryfield](https://github.com/david-engelmann/canaryfield) | Does the harness catch planted defects? | 200+ seeded Python defect classes across real gates |
+| [greenharvest](https://github.com/david-engelmann/greenharvest) | Which tests earn their CI runtime? | Marginal defect-catch value per second of execution |
+
+## Documentation
+
+| If you want to... | Read |
+| --- | --- |
+| Browse the searchable handbook with diagrams | [Published documentation](https://david-engelmann.github.io/deadgate/) |
+| Install, configure CI workflows, and run day-two operations | [Operator Guide](https://github.com/david-engelmann/deadgate/blob/main/docs/GUIDE.md) |
+| Understand parser bounds, engine phases, and containment invariants | [Architecture](https://github.com/david-engelmann/deadgate/blob/main/docs/ARCHITECTURE.md) |
+| Integrate JSON or text schemas into downstream tooling | [Wire Formats](https://github.com/david-engelmann/deadgate/blob/main/docs/FORMATS.md) |
+| Compare `deadgate` against existing linters, coverage, and mutators | [Comparison](https://github.com/david-engelmann/deadgate/blob/main/docs/COMPARISON.md) and [FAQ](https://github.com/david-engelmann/deadgate/blob/main/docs/FAQ.md) |
+| Review threat boundaries, vulnerability reporting, and contribution gates | [Security Policy](https://github.com/david-engelmann/deadgate/blob/main/SECURITY.md) and [Contributing](https://github.com/david-engelmann/deadgate/blob/main/CONTRIBUTING.md) |
 
 ## Status
 
